@@ -94,7 +94,7 @@ If Ryu fails to import on newer Python/setuptools: `sudo pip3 install "setuptool
 python3 tests/test_local_recovery.py        # expects PASS
 ```
 
-### B. Manual demo (good for the viva)
+### B. Manual demo
 ```bash
 # terminal 1 - controller
 ROUTING_MODE=dynamic RESULTS_DIR=results/demo ryu-manager --observe-links controller/adaptive_router.py
@@ -121,7 +121,7 @@ sudo env "PATH=$PATH" REPS=3 ./experiments/run_all.sh
 python3 analysis/analyze.py            # -> results/summary_*.csv, comparison.png, timeline_*.png
 ```
 
-### E. Live dashboard (recommended for the demo)
+### E. Live dashboard
 One command starts Ryu + the Mininet topology + the UDP server/clients + a web UI. No extra pip packages.
 ```bash
 sudo env "PATH=$PATH" python3 dashboard/app.py          # open http://localhost:8080  (add --mode static for the baseline)
@@ -187,7 +187,7 @@ tests/        test_local_recovery.py test_dashboard_sim.py
 results/      (generated)
 ```
 
-## 9. Design decisions / limitations (be ready for the viva)
+## 9. Design decisions and limitations
 * **Why proxy ARP?** The topology has loops; flooding ARP through the fabric would create a broadcast storm.
   The controller floods only on host-facing ports.
 * **Why destination-based proactive flows?** Re-routing after a failure is a single overwrite of
@@ -212,4 +212,4 @@ results/      (generated)
 | Dynamic SDN functionality | failure detection, rerouting, link-up re-convergence, monitoring (port stats) |
 | Challenging scenario / robustness | T3 double failure, T4 flapping (dashboard scenario buttons) |
 | Performance evaluation & comparison | `experiments/`, `analysis/`, dashboard benchmark; static baseline vs SDN, with/without app recovery, 3 scenarios x 3 runs |
-| Documentation, demo, viva | this README, `dashboard/`, section 9 (design decisions) |
+| Documentation, demo | this README, `dashboard/`, section 9 (design decisions) |
