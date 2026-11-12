@@ -1,532 +1,201 @@
-
 #!/usr/bin/env python3
+"""Aggregate all runs under results/<scenario>/<config>/run<i>/ into tables + plots.
+
+Metrics per run
+  detect_ms        link failure injected -> controller 'link_down_detected'
+  reroute_ms       link failure injected -> new flows pushed ('routes_updated')
+  react_ms         switch reports the port down -> controller has pushed the new flows
+  outage_ms        service interruption seen by the application: first message that did not
+                   get through after the failure -> first later message delivered on its first
+                   attempt (client 1); 0 = no message affected
+  max_gap_ms       largest gap between server arrivals (also shows VM jitter / noise floor)
+  loss_pct         application-level loss (never ACKed, all clients)
+  first_try_loss   % of messages whose first transmission was not ACKed
+  retransmissions  extra DATA datagrams sent
+  rtt_pre_ms       mean RTT before the failure (primary path)
+  rtt_backup_ms    mean RTT after recovery while running on the backup path
+  e2e_p95/max_ms   generation->ACK latency (includes waiting for recovery)
 """
-Analyze UDP + SDN experiment results.
-
-Features:
-- Reads client/server CSV logs recursively.
-- Reads client_summary.json files when available.
-- Calculates unique received messages, duplicate arrivals,
-  packet delivery ratio, loss, retransmissions, and latency.
-- Reads events.json for failure and restoration timestamps.
-- Exports summary.csv, summary.md, and optional latency plots.
-
-Run from the repository root:
-    python3 analysis/analyze.py
-
-Optional:
-    python3 analysis/analyze.py --input results --output analysis/output
-"""
-
 import argparse
-import csv
+import glob
 import json
-import math
-import re
-import statistics
-from pathlib import Path
+import os
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt   # noqa: E402
+import numpy as np                # noqa: E402
+import pandas as pd               # noqa: E402
+
+CONFIGS = ['static-noapp', 'static-app', 'dynamic-noapp', 'dynamic-app']
+LABELS = {'static-noapp': 'Static routing\n+ plain UDP',
+          'static-app': 'Static routing\n+ app recovery',
+          'dynamic-noapp': 'SDN reroute\n+ plain UDP',
+          'dynamic-app': 'SDN reroute\n+ app recovery'}
 
 
-def normalize(value):
-    """Normalize a column name for flexible matching."""
-    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+def analyze_run(rundir):
+    meta = json.load(open(os.path.join(rundir, 'meta.json')))
+    ev = pd.read_csv(os.path.join(rundir, 'controller_events.csv'))
+    srv = pd.read_csv(os.path.join(rundir, 'server_log.csv'))
+    cl = pd.concat([pd.read_csv(f) for f in sorted(glob.glob(os.path.join(rundir, 'client*.csv')))
+                    if 'summary' not in f])
+    thr = max(0.2, 5.0 / meta['rate'])
+    downs = [e for e in meta['events'] if e['action'] == 'down']
+    fail = downs[0]['ts'] if downs else None
+    r = dict(fail=fail)
+
+    # controller side
+    r['detect_ms'] = r['reroute_ms'] = r['react_ms'] = np.nan
+    if fail:
+        d = ev[(ev.event == 'link_down_detected') & (ev.ts >= fail - 0.05)].ts
+        u = ev[(ev.event == 'routes_updated') & ev.detail.str.contains('reason=link_down') &
+               (ev.ts >= fail - 0.05)].ts
+        pd_ = ev[(ev.event == 'port_status') & ev.detail.str.contains('down=True') &
+                 (ev.ts >= fail - 0.05)].ts
+        if len(d): r['detect_ms'] = (d.min() - fail) * 1000
+        if len(u) and len(pd_): r['react_ms'] = (u.min() - pd_.min()) * 1000
+        if len(u): r['reroute_ms'] = (u.min() - fail) * 1000
+
+    # data-plane outage as seen by the application (client 1).
+    # outage_ms = failure injection -> first message sent after the failure that got
+    # through on its FIRST attempt (messages sent while the path was dead need retries
+    # or are lost). Robust against random VM jitter elsewhere in the run.
+    c1 = pd.read_csv(os.path.join(rundir, 'client1.csv'))
+    s = np.sort(srv[srv.client_id == 1].recv_ts.to_numpy())
+    gaps = np.diff(s)
+    r['max_gap_ms'] = float(gaps.max() * 1000) if len(gaps) else np.nan   # includes VM jitter
+    r['outage_ms'] = np.nan
+    if fail:
+        post = c1[c1.first_tx.notna() & (c1.first_tx > fail)].sort_values('first_tx')
+        bad = post[(post.attempts > 1) | (post.status == 'lost')]
+        if len(bad) == 0:
+            r['outage_ms'] = 0.0          # no message was affected
+        else:
+            start = bad.first_tx.iloc[0]   # first message that did not get through
+            good = post[(post.first_tx > start) & (post.attempts == 1) & post.rtt_ms.notna()]
+            if len(good):
+                r['outage_ms'] = (good.first_tx.iloc[0] - start) * 1000
+
+    # loss / retransmissions (all clients)
+    tot = len(cl)
+    lost = int((cl.status == 'lost').sum())
+    r['loss_pct'] = 100.0 * lost / tot
+    r['first_try_loss_pct'] = 100.0 * (((cl.attempts > 1) | (cl.status == 'lost')).sum()) / tot
+    r['retransmissions'] = int((cl.attempts - 1).clip(lower=0).sum())
+
+    # latency
+    ok = cl[cl.rtt_ms.notna()]
+    r['rtt_mean_ms'] = ok.rtt_ms.mean()
+    r['e2e_p95_ms'] = ok.e2e_ms.quantile(0.95)
+    r['e2e_max_ms'] = ok.e2e_ms.max()
+    r['rtt_pre_ms'] = r['rtt_backup_ms'] = np.nan
+    if fail:
+        pre = ok[ok.first_tx < fail - 0.3]
+        r['rtt_pre_ms'] = pre.rtt_ms.mean()
+        ups = [e['ts'] for e in meta['events'] if e['action'] == 'up' and e['ts'] > fail]
+        end = ups[0] if ups else meta['t_start'] + meta['duration']
+        rec = r['outage_ms'] / 1000 if np.isfinite(r['outage_ms']) else 0
+        bk = ok[(ok.first_tx > fail + rec + 1.0) & (ok.first_tx < end - 0.5)]
+        r['rtt_backup_ms'] = bk.rtt_ms.mean()
+    return r
 
 
-def find_column(fieldnames, candidates):
-    """Find a CSV column using a list of possible names."""
-    normalized = {normalize(name): name for name in fieldnames}
-
-    for candidate in candidates:
-        key = normalize(candidate)
-        if key in normalized:
-            return normalized[key]
-
-    # Permit columns such as avg_rtt_ms or message_seq_number.
-    for candidate in candidates:
-        key = normalize(candidate)
-        if len(key) >= 4:
-            for normalized_name, original_name in normalized.items():
-                if key in normalized_name:
-                    return original_name
-
-    return None
-
-
-def to_number(value):
-    """Convert a value to float, returning None when invalid."""
-    if value is None:
-        return None
-
-    try:
-        result = float(str(value).strip())
-        return result if math.isfinite(result) else None
-    except (TypeError, ValueError):
-        return None
-
-
-def read_csv(path):
-    """Read a CSV file and return its headers and rows."""
-    try:
-        with path.open("r", newline="", encoding="utf-8-sig") as file:
-            reader = csv.DictReader(file)
-            if not reader.fieldnames:
-                return [], []
-            return reader.fieldnames, list(reader)
-    except (OSError, csv.Error) as exc:
-        print(f"WARNING: Could not read {path}: {exc}")
-        return [], []
-
-
-def read_json(path):
-    """Read JSON safely."""
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def first_number(data, names):
-    """Find a numeric field in a JSON dictionary."""
-    if not isinstance(data, dict):
-        return None
-
-    normalized = {normalize(k): v for k, v in data.items()}
-
-    for name in names:
-        key = normalize(name)
-        if key in normalized:
-            number = to_number(normalized[key])
-            if number is not None:
-                return number
-
-    return None
-
-
-def summarize_client(path):
-    """Summarize a client CSV using common logging conventions."""
-    headers, rows = read_csv(path)
-
-    if not headers:
-        return {}
-
-    seq_col = find_column(
-        headers,
-        ["seq", "sequence", "sequence_number", "seq_num", "message_id"],
-    )
-    type_col = find_column(
-        headers,
-        ["type", "event", "event_type", "message_type", "status", "action"],
-    )
-    latency_col = find_column(
-        headers,
-        [
-            "rtt_ms",
-            "latency_ms",
-            "round_trip_time_ms",
-            "rtt",
-            "latency",
-            "round_trip_ms",
-        ],
-    )
-    retrans_col = find_column(
-        headers,
-        ["retransmissions", "retransmit_count", "retries", "retry_count"],
-    )
-    received_col = find_column(
-        headers,
-        ["ack_received", "acknowledged", "acked", "success"],
-    )
-
-    latencies = []
-    sequence_ids = set()
-    ack_sequences = set()
-    retransmission_rows = 0
-    total_rows = len(rows)
-
-    for row in rows:
-        event = str(row.get(type_col, "")).strip().upper() if type_col else ""
-
-        # Prefer an explicit retransmission count when available.
-        if retrans_col:
-            number = to_number(row.get(retrans_col))
-            if number is not None:
-                retransmission_rows += int(number)
-        elif any(word in event for word in ("RETRANSMIT", "RETRY")):
-            retransmission_rows += 1
-
-        if latency_col:
-            latency = to_number(row.get(latency_col))
-            if latency is not None and latency >= 0:
-                latencies.append(latency)
-
-        seq_value = row.get(seq_col) if seq_col else None
-        seq_value = str(seq_value).strip() if seq_value is not None else ""
-
-        if seq_value and seq_value.lower() not in ("none", "nan"):
-            if any(word in event for word in ("SEND", "DATA", "MESSAGE")):
-                sequence_ids.add(seq_value)
-
-            if "ACK" in event and not any(
-                word in event for word in ("SEND", "WAIT", "TIMEOUT")
-            ):
-                ack_sequences.add(seq_value)
-
-        if received_col and seq_value:
-            flag = str(row.get(received_col, "")).strip().lower()
-            if flag in ("1", "true", "yes", "success", "acked"):
-                ack_sequences.add(seq_value)
-
-    return {
-        "client_csv": str(path),
-        "client_rows": total_rows,
-        "client_unique_sequences": len(sequence_ids) or None,
-        "client_ack_sequences": len(ack_sequences) or None,
-        "client_retransmissions": retransmission_rows,
-        "client_latency_samples": len(latencies),
-        "client_avg_latency_ms": (
-            statistics.mean(latencies) if latencies else None
-        ),
-        "client_median_latency_ms": (
-            statistics.median(latencies) if latencies else None
-        ),
-        "client_max_latency_ms": max(latencies) if latencies else None,
-        "_latencies": latencies,
-    }
-
-
-def summarize_server(path):
-    """Summarize server arrivals and unique message identifiers."""
-    headers, rows = read_csv(path)
-
-    if not headers:
-        return {}
-
-    seq_col = find_column(
-        headers,
-        ["seq", "sequence", "sequence_number", "seq_num", "message_id"],
-    )
-    client_col = find_column(
-        headers,
-        ["client_id", "client", "source_client"],
-    )
-    type_col = find_column(
-        headers,
-        ["type", "event", "event_type", "message_type"],
-    )
-    duplicate_col = find_column(
-        headers,
-        ["duplicate", "is_duplicate", "duplicate_message"],
-    )
-
-    data_rows = []
-    unique_ids = set()
-    duplicate_count = 0
-
-    for row in rows:
-        event = str(row.get(type_col, "")).strip().upper() if type_col else ""
-
-        if event and not any(word in event for word in ("DATA", "MESSAGE")):
+def collect(results):
+    rows = []
+    for meta in glob.glob(os.path.join(results, '*', '*', 'run*', 'meta.json')):
+        rundir = os.path.dirname(meta)
+        sc, cfg, run = rundir.split(os.sep)[-3:]
+        try:
+            row = analyze_run(rundir)
+        except Exception as e:     # keep going if one run is broken
+            print('skip %s: %s' % (rundir, e))
             continue
-
-        data_rows.append(row)
-
-        seq = str(row.get(seq_col, "")).strip() if seq_col else ""
-        client = str(row.get(client_col, "")).strip() if client_col else ""
-
-        if seq and seq.lower() not in ("none", "nan"):
-            unique_ids.add((client, seq))
-
-        if duplicate_col:
-            flag = str(row.get(duplicate_col, "")).strip().lower()
-            if flag in ("1", "true", "yes"):
-                duplicate_count += 1
-
-    return {
-        "server_csv": str(path),
-        "server_data_arrivals": len(data_rows),
-        "server_unique_messages": len(unique_ids) if seq_col else None,
-        "server_duplicate_count": (
-            duplicate_count if duplicate_col else None
-        ),
-    }
+        row.update(scenario=sc, config=cfg, run=run, rundir=rundir)
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
-def summarize_events(path):
-    """Extract failure and restoration times from events.json."""
-    data = read_json(path)
-    if not isinstance(data, list):
-        return {}
-
-    down_time = None
-    up_time = None
-    route_update_times = []
-
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-
-        event = str(item.get("event", "")).lower()
-        timestamp = to_number(item.get("time_seconds"))
-
-        if timestamp is None:
-            continue
-
-        if "primary_link_down" in event or "link_down" in event:
-            if down_time is None:
-                down_time = timestamp
-
-        if "primary_link_restored" in event or "link_up" in event:
-            if up_time is None:
-                up_time = timestamp
-
-        if "routes_updated" in event:
-            route_update_times.append(timestamp)
-
-    return {
-        "failure_time_seconds": down_time,
-        "restoration_time_seconds": up_time,
-        "recorded_route_update_count": len(route_update_times),
-    }
-
-
-def find_first(directory, filename):
-    """Find the first matching file within a run directory."""
-    matches = sorted(directory.rglob(filename))
-    return matches[0] if matches else None
-
-
-def analyze_run(run_dir):
-    """Analyze one experiment directory."""
-    result = {
-        "run": run_dir.name,
-        "run_directory": str(run_dir),
-    }
-
-    client_summary = find_first(run_dir, "client_summary.json")
-    if client_summary:
-        data = read_json(client_summary)
-        if isinstance(data, dict):
-            for key, value in data.items():
-                if isinstance(value, (str, int, float, bool)) or value is None:
-                    result["summary_" + str(key)] = value
-
-    client_csv = find_first(run_dir, "client.csv")
-    if client_csv:
-        result.update(summarize_client(client_csv))
-
-    server_csv = find_first(run_dir, "server.csv")
-    if server_csv:
-        result.update(summarize_server(server_csv))
-
-    events_json = find_first(run_dir, "events.json")
-    if events_json:
-        result.update(summarize_events(events_json))
-
-    # Derive a delivery ratio only when the denominator and numerator
-    # are available and represent comparable unique messages.
-    sent = first_number(
-        result,
-        [
-            "summary_messages_sent",
-            "summary_total_sent",
-            "summary_sent",
-            "summary_packets_sent",
-        ],
-    )
-    acknowledged = first_number(
-        result,
-        [
-            "summary_messages_acknowledged",
-            "summary_acked",
-            "summary_acknowledged",
-            "summary_total_acked",
-        ],
-    )
-
-    if sent is not None and acknowledged is not None and sent > 0:
-        result["delivery_ratio_percent"] = min(
-            100.0, acknowledged / sent * 100.0
-        )
-        result["reported_loss_percent"] = max(
-            0.0, (sent - acknowledged) / sent * 100.0
-        )
-
-    down = to_number(result.get("failure_time_seconds"))
-    updated = to_number(result.get("restoration_time_seconds"))
-
-    if down is not None and updated is not None and updated >= down:
-        result["link_down_duration_seconds"] = updated - down
-
-    return result
-
-
-def write_csv(path, rows):
-    """Write result dictionaries with a combined set of columns."""
-    columns = []
-    for row in rows:
-        for key in row:
-            if key.startswith("_"):
-                continue
-            if key not in columns:
-                columns.append(key)
-
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=columns)
-        writer.writeheader()
-
-        for row in rows:
-            writer.writerow({
-                key: value
-                for key, value in row.items()
-                if not key.startswith("_")
-            })
-
-
-def write_markdown(path, rows):
-    """Write a compact report of available metrics."""
-    metrics = [
-        ("Run", "run"),
-        ("Delivery ratio (%)", "delivery_ratio_percent"),
-        ("Reported loss (%)", "reported_loss_percent"),
-        ("Server arrivals", "server_data_arrivals"),
-        ("Unique server messages", "server_unique_messages"),
-        ("Retransmissions", "client_retransmissions"),
-        ("Average latency (ms)", "client_avg_latency_ms"),
-        ("Maximum latency (ms)", "client_max_latency_ms"),
-        ("Link-down time (s)", "failure_time_seconds"),
-        ("Link-restored time (s)", "restoration_time_seconds"),
-    ]
-
-    with path.open("w", encoding="utf-8") as file:
-        file.write("# UDP + SDN Experiment Analysis\n\n")
-        file.write(
-            "Missing values mean the required field was not available "
-            "in the input logs. Do not interpret them as zero.\n\n"
-        )
-        file.write("| " + " | ".join(label for label, _ in metrics) + " |\n")
-        file.write("|" + "|".join("---" for _ in metrics) + "|\n")
-
-        for row in rows:
-            values = []
-            for _, key in metrics:
-                value = row.get(key)
-                if value is None or value == "":
-                    values.append("N/A")
-                elif isinstance(value, float):
-                    values.append(f"{value:.3f}")
-                else:
-                    values.append(str(value))
-            file.write("| " + " | ".join(values) + " |\n")
-
-
-def make_latency_plot(output_dir, rows):
-    """Create a latency plot when matplotlib is installed."""
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib is not installed; skipping latency plot.")
-        return
-
-    plotted = False
-    plt.figure(figsize=(10, 5))
-
-    for row in rows:
-        values = row.get("_latencies", [])
-        if values:
-            plt.plot(
-                range(1, len(values) + 1),
-                values,
-                label=row["run"],
-                linewidth=1,
-            )
-            plotted = True
-
-    if not plotted:
-        plt.close()
-        print("No recognized latency samples; skipping latency plot.")
-        return
-
-    plt.xlabel("Latency sample")
-    plt.ylabel("Latency (ms)")
-    plt.title("UDP Client Latency Across Experiments")
-    plt.grid(True, alpha=0.3)
-    plt.legend(fontsize="small")
-    plt.tight_layout()
-    output = output_dir / "latency_comparison.png"
-    plt.savefig(output, dpi=150)
-    plt.close()
-    print(f"Latency plot: {output}")
+def bar(ax, df, col, scenarios, title, ylabel, log=False):
+    w = 0.2
+    vmax = 1.0
+    for i, cfg in enumerate(CONFIGS):
+        vals, errs = [], []
+        for sc in scenarios:
+            x = df[(df.scenario == sc) & (df.config == cfg)][col]
+            vals.append(x.mean() if len(x) else 0)
+            errs.append(x.std() if len(x) > 1 else 0)
+        vals, errs = np.nan_to_num(vals), np.nan_to_num(errs)
+        vmax = max(vmax, float(np.max(vals + errs)))
+        pos = np.arange(len(scenarios)) + (i - 1.5) * w
+        ax.bar(pos, vals, w, yerr=errs, capsize=2, label=LABELS[cfg].replace('\n', ' '))
+        for p, v in zip(pos, vals):          # print the value on every bar (also 0)
+            txt = '%.0f' % v if v >= 10 else '%.1f' % v
+            ax.annotate(txt, (p, v), ha='center', va='bottom', fontsize=6.5, rotation=90,
+                        xytext=(0, 2), textcoords='offset points')
+    if log:
+        ax.set_yscale('symlog', linthresh=10)
+        ax.set_ylim(0, vmax * 6)      # head-room for the value labels
+        ylabel += ' (log scale)'
+    else:
+        ax.margins(y=0.18)
+    ax.set_xticks(range(len(scenarios)))
+    ax.set_xticklabels(scenarios)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.grid(axis='y', alpha=.3)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze UDP/SDN experiment logs."
-    )
-    parser.add_argument("--input", default="results")
-    parser.add_argument("--output", default="analysis/output")
-    parser.add_argument(
-        "--no-plot",
-        action="store_true",
-        help="Do not generate the latency plot.",
-    )
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--results', default='results')
+    a = ap.parse_args()
+    df = collect(a.results)
+    if df.empty:
+        print('no runs found under', a.results)
+        return
+    df.drop(columns=['rundir']).to_csv(os.path.join(a.results, 'summary_runs.csv'), index=False)
+    num = ['detect_ms', 'reroute_ms', 'react_ms', 'outage_ms', 'max_gap_ms', 'loss_pct',
+           'first_try_loss_pct', 'retransmissions', 'rtt_pre_ms', 'rtt_backup_ms',
+           'e2e_p95_ms', 'e2e_max_ms']
+    agg = df.groupby(['scenario', 'config'])[num].agg(['mean', 'std']).round(2)
+    agg.to_csv(os.path.join(a.results, 'summary_by_config.csv'))
+    print(agg.to_string())
 
-    input_dir = Path(args.input).resolve()
-    output_dir = Path(args.output).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    scen = [s for s in ['single', 'double', 'flap'] if s in set(df.scenario)]
+    if scen:
+        fig, ax = plt.subplots(1, 3, figsize=(18, 5.2))
+        bar(ax[0], df, 'outage_ms', scen, 'Service outage after first failure', 'ms', log=True)
+        bar(ax[1], df, 'loss_pct', scen, 'Application-level packet loss', '% of messages')
+        bar(ax[2], df, 'e2e_p95_ms', scen, 'p95 message latency (gen -> ACK)', 'ms', log=True)
+        ax[1].legend(fontsize=7, loc='upper right')
+        plt.tight_layout()
+        plt.savefig(os.path.join(a.results, 'comparison.png'), dpi=140)
+        plt.close()
 
-    if not input_dir.exists():
-        raise SystemExit(f"Input directory does not exist: {input_dir}")
-
-    # Treat each immediate child directory as an experiment run.
-    run_dirs = sorted(
-        path for path in input_dir.iterdir() if path.is_dir()
-    )
-
-    if not run_dirs:
-        # Also allow logs directly inside the input directory.
-        run_dirs = [input_dir]
-
-    rows = []
-    for run_dir in run_dirs:
-        row = analyze_run(run_dir)
-
-        has_data = any(
-            key in row
-            for key in (
-                "client_csv",
-                "server_csv",
-                "summary_messages_sent",
-                "summary_total_sent",
-                "summary_sent",
-                "failure_time_seconds",
-            )
-        )
-
-        if has_data:
-            rows.append(row)
-            print(f"Analyzed: {run_dir}")
-        else:
-            print(f"Skipped: {run_dir} (no recognized experiment logs)")
-
-    if not rows:
-        raise SystemExit(
-            "No experiment logs found. Check the --input path and filenames."
-        )
-
-    csv_path = output_dir / "summary.csv"
-    markdown_path = output_dir / "summary.md"
-
-    write_csv(csv_path, rows)
-    write_markdown(markdown_path, rows)
-
-    if not args.no_plot:
-        make_latency_plot(output_dir, rows)
-
-    print("\nAnalysis complete.")
-    print(f"CSV summary:      {csv_path}")
-    print(f"Markdown summary: {markdown_path}")
+    # RTT timeline of run1 for each config in each scenario
+    for sc in scen:
+        fig, axes = plt.subplots(len(CONFIGS), 1, figsize=(10, 9), sharex=True)
+        for ax, cfg in zip(axes, CONFIGS):
+            sub = df[(df.scenario == sc) & (df.config == cfg)]
+            if sub.empty:
+                continue
+            rd = sub.iloc[0].rundir
+            meta = json.load(open(os.path.join(rd, 'meta.json')))
+            c = pd.read_csv(os.path.join(rd, 'client1.csv'))
+            c = c[c.rtt_ms.notna() & c.first_tx.notna()]
+            ax.plot(c.first_tx - meta['t_start'], c.rtt_ms, '.', ms=3)
+            for e in meta['events']:
+                ax.axvline(e['ts'] - meta['t_start'], color='r' if e['action'] == 'down'
+                           else 'g', ls='--')
+            ax.set_ylabel('RTT ms')
+            ax.set_title(LABELS[cfg].replace('\n', ' '), fontsize=9)
+        axes[-1].set_xlabel('time (s)   red = link down, green = link up')
+        plt.tight_layout()
+        plt.savefig(os.path.join(a.results, 'timeline_%s.png' % sc), dpi=140)
+        plt.close()
+    print('wrote summary_runs.csv, summary_by_config.csv, comparison.png, timeline_*.png')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
