@@ -1,0 +1,96 @@
+ts,event,detail
+1794193018.723995,controller_start,mode=dynamic
+1794193020.183249,switch_up,s4
+1794193020.183433,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193020.187348,switch_up,s1
+1794193020.187490,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193020.187535,switch_up,s5
+1794193020.187565,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193020.187594,switch_up,s3
+1794193020.187759,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193020.192803,switch_up,s2
+1794193020.192977,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193020.193985,link_up,s4:3 -> s5:2
+1794193020.195807,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.202538,link_up,s1:4 -> s3:1
+1794193020.202675,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.202714,link_up,s1:3 -> s2:1
+1794193020.202739,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.202763,link_up,s3:2 -> s5:1
+1794193020.202784,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.205443,link_up,s5:2 -> s4:3
+1794193020.205561,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.205594,link_up,s2:2 -> s4:2
+1794193020.205617,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.205639,link_up,s3:1 -> s1:4
+1794193020.205659,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.205678,link_up,s2:1 -> s1:3
+1794193020.205697,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.205717,link_up,s5:1 -> s3:2
+1794193020.205735,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193020.211466,link_up,s4:2 -> s2:2
+1794193020.211660,routes_updated,reason=link_up flows=0 took_ms=0.00 paths=[]
+1794193030.542017,host_learned,10.0.0.1 00:00:00:00:00:01 at s1:1
+1794193030.543211,routes_updated,reason=host_learned flows=5 took_ms=0.90 paths=[]
+1794193030.551868,host_learned,10.0.0.2 00:00:00:00:00:02 at s4:1
+1794193030.553515,routes_updated,reason=host_learned flows=10 took_ms=1.47 paths=[10.0.0.1->10.0.0.2:s1>s2>s4]
+1794193030.595033,host_learned,10.0.0.3 00:00:00:00:00:03 at s1:2
+1794193030.598135,routes_updated,reason=host_learned flows=15 took_ms=2.79 paths=[10.0.0.1->10.0.0.2:s1>s2>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s2>s1]
+1794193039.746382,port_status,s4 port=2 down=False
+1794193039.749408,port_status,s4 port=2 down=True
+1794193039.749510,link_down_detected,s4:2 via port_status
+1794193039.755545,routes_updated,reason=link_down flows=15 took_ms=5.99 paths=[10.0.0.1->10.0.0.2:s1>s3>s5>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s5>s3>s1]
+1794193039.755930,port_status,s2 port=2 down=False
+1794193039.755977,port_status,s2 port=2 down=True
+1794193039.757951,port_status,s4 port=2 down=True
+1794193045.737784,port_status,s3 port=2 down=False
+1794193045.740999,port_status,s3 port=2 down=True
+1794193045.741188,link_down_detected,s3:2 via port_status
+1794193045.744622,routes_updated,reason=link_down flows=15 took_ms=3.40 paths=[10.0.0.1->10.0.0.2:UNREACHABLE 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:UNREACHABLE]
+1794193045.745760,port_status,s5 port=1 down=False
+1794193045.746313,port_status,s5 port=1 down=True
+1794193045.746364,port_status,s5 port=1 down=True
+1794193051.738327,port_status,s3 port=2 down=True
+1794193051.751355,port_status,s3 port=2 down=False
+1794193051.753666,port_status,s5 port=1 down=False
+1794193051.808339,link_up,s5:1 -> s3:2
+1794193051.809648,routes_updated,reason=link_up flows=15 took_ms=1.16 paths=[10.0.0.1->10.0.0.2:UNREACHABLE 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s5>s3>s1]
+1794193051.813541,link_up,s3:2 -> s5:1
+1794193051.814909,routes_updated,reason=link_up flows=15 took_ms=1.24 paths=[10.0.0.1->10.0.0.2:s1>s3>s5>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s5>s3>s1]
+1794193057.740081,port_status,s2 port=2 down=True
+1794193057.753624,port_status,s4 port=2 down=False
+1794193057.758440,port_status,s2 port=2 down=False
+1794193057.832617,link_up,s2:2 -> s4:2
+1794193057.838549,routes_updated,reason=link_up flows=15 took_ms=1.45 paths=[10.0.0.1->10.0.0.2:s1>s2>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s5>s3>s1]
+1794193057.841691,link_up,s4:2 -> s2:2
+1794193057.849971,routes_updated,reason=link_up flows=15 took_ms=4.07 paths=[10.0.0.1->10.0.0.2:s1>s2>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s2>s1]
+1794193068.363502,port_status,s1 port=1 down=False
+1794193068.363639,port_status,s1 port=1 down=True
+1794193068.423027,port_status,s4 port=1 down=True
+1794193068.482686,port_status,s1 port=2 down=False
+1794193068.486555,port_status,s1 port=2 down=True
+1794193068.509066,port_status,s1 port=3 down=True
+1794193068.509403,link_down_detected,s1:3 via port_status
+1794193068.514472,routes_updated,reason=link_down flows=15 took_ms=5.02 paths=[10.0.0.1->10.0.0.2:s1>s3>s5>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s5>s3>s1]
+1794193068.515178,port_status,s2 port=1 down=True
+1794193068.579366,port_status,s1 port=4 down=True
+1794193068.579527,link_down_detected,s1:4 via port_status
+1794193068.580930,routes_updated,reason=link_down flows=15 took_ms=1.36 paths=[10.0.0.1->10.0.0.2:UNREACHABLE 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:UNREACHABLE]
+1794193068.581519,port_status,s3 port=1 down=True
+1794193068.653247,port_status,s5 port=1 down=True
+1794193068.653923,link_down_detected,s5:1 via port_status
+1794193068.655027,routes_updated,reason=link_down flows=15 took_ms=1.06 paths=[10.0.0.1->10.0.0.2:UNREACHABLE 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:UNREACHABLE]
+1794193068.655096,port_status,s4 port=2 down=True
+1794193068.655125,link_down_detected,s4:2 via port_status
+1794193068.656150,routes_updated,reason=link_down flows=15 took_ms=1.00 paths=[10.0.0.1->10.0.0.2:UNREACHABLE 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:UNREACHABLE]
+1794193068.656222,port_status,s2 port=2 down=True
+1794193068.656255,port_status,s3 port=2 down=True
+1794193068.739550,port_status,s4 port=3 down=True
+1794193068.739689,link_down_detected,s4:3 via port_status
+1794193068.744513,routes_updated,reason=link_down flows=15 took_ms=4.79 paths=[10.0.0.1->10.0.0.2:UNREACHABLE 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:UNREACHABLE]
+1794193068.745260,port_status,s5 port=2 down=True
+1794193068.750642,switch_down,s4
+1794193068.766947,switch_down,s1
+1794193068.787415,switch_down,s3
+1794193068.799578,switch_down,s5
+1794193068.818551,switch_down,s2

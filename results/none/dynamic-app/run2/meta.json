@@ -1,0 +1,9 @@
+{
+  "mode": "dynamic",
+  "recovery": "on",
+  "rate": 50,
+  "duration": 30.0,
+  "clients": 2,
+  "t_start": 1794193949.9541385,
+  "events": []
+}

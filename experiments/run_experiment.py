@@ -1,265 +1,135 @@
-
 #!/usr/bin/env python3
+"""Run ONE experiment: controller + Mininet + UDP server/clients + failure schedule.
+
+Must be run as root (Mininet).  Example:
+  sudo env "PATH=$PATH" python3 experiments/run_experiment.py \
+       --mode dynamic --recovery on --duration 30 \
+       --events "8:down:s2-s4,20:up:s2-s4" --out results/single/dynamic-app/run1
+
+--mode dynamic|static   controller behaviour (static = no rerouting baseline)
+--recovery on|off       application-level recovery in the client
+--events                comma list  <t_seconds>:<down|up>:<swA>-<swB>
 """
-Local UDP recovery test.
-
-A UDP proxy sits between the client and server. It drops all traffic
-for a configured blackout period, then forwards traffic normally.
-
-Run from the project root:
-    python3 tests/test_local_recovery.py
-
-This test does not require Mininet or Ryu.
-"""
-
-import csv
+import argparse
+import json
 import os
+import signal
 import socket
 import subprocess
 import sys
-import tempfile
-import threading
 import time
-from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = PROJECT_ROOT / "src"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, 'topology'))
 
-SERVER_HOST = "127.0.0.1"
-SERVER_PORT = 0
-PROXY_PORT = 0
-
-BLACKOUT_SECONDS = 2.0
-TEST_DURATION = 6.0
-SEND_RATE = 50.0
+from mininet.log import setLogLevel   # noqa: E402
+from topo import build_net            # noqa: E402
 
 
-class UDPBlackoutProxy:
-    """Drops UDP packets during a blackout and forwards them otherwise."""
-
-    def __init__(self, listen_port, server_address, blackout_seconds):
-        self.server_address = server_address
-        self.blackout_seconds = blackout_seconds
-        self.start_time = None
-        self.stop_event = threading.Event()
-
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.bind(("127.0.0.1", listen_port))
-        self.socket.settimeout(0.1)
-
-        self.port = self.socket.getsockname()[1]
-        self.client_address = None
-        self.lock = threading.Lock()
-
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.server_socket.bind(("127.0.0.1", 0))
-        self.server_socket.settimeout(0.1)
-
-        self.dropped_packets = 0
-        self.forwarded_packets = 0
-
-        self.thread = threading.Thread(target=self.run, daemon=True)
-
-    def start(self):
-        self.start_time = time.monotonic()
-        self.thread.start()
-
-    def is_blackout(self):
-        return (
-            time.monotonic() - self.start_time
-            < self.blackout_seconds
-        )
-
-    def run(self):
-        while not self.stop_event.is_set():
-            # Receive client packets.
-            try:
-                data, address = self.socket.recvfrom(65535)
-                self.client_address = address
-
-                if self.is_blackout():
-                    self.dropped_packets += 1
-                else:
-                    self.server_socket.sendto(data, self.server_address)
-                    self.forwarded_packets += 1
-            except socket.timeout:
-                pass
-            except OSError:
-                break
-
-            # Receive server replies.
-            try:
-                data, address = self.server_socket.recvfrom(65535)
-
-                if self.is_blackout():
-                    self.dropped_packets += 1
-                elif self.client_address is not None:
-                    self.socket.sendto(data, self.client_address)
-                    self.forwarded_packets += 1
-            except socket.timeout:
-                pass
-            except OSError:
-                break
-
-    def close(self):
-        self.stop_event.set()
-        self.socket.close()
-        self.server_socket.close()
-        self.thread.join(timeout=1.0)
+def parse_events(s):
+    ev = []
+    for item in filter(None, s.split(',')):
+        t, act, link = item.split(':')
+        x, y = link.split('-')
+        ev.append((float(t), act, x, y))
+    return sorted(ev)
 
 
-def start_server(log_path):
-    """Start the project UDP server on an available UDP port."""
-    server = subprocess.Popen(
-        [
-            sys.executable,
-            str(SRC_DIR / "server.py"),
-            "--host", "127.0.0.1",
-            "--port", "0",
-            "--log", str(log_path),
-        ],
-        cwd=str(SRC_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-
-    # server.py supports port 0 but does not print the chosen port
-    # in a machine-readable form, so this helper uses a reserved
-    # test port instead in run_test().
-    return server
-
-
-def run_test(recovery_enabled):
-    mode = "recovery_on" if recovery_enabled else "recovery_off"
-
-    with tempfile.TemporaryDirectory(prefix="udp_recovery_") as temp:
-        temp_dir = Path(temp)
-        server_log = temp_dir / "server.csv"
-        client_log = temp_dir / "client.csv"
-        summary_path = temp_dir / "summary.json"
-
-        # Reserve a local port for the server.
-        reservation = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        reservation.bind(("127.0.0.1", 0))
-        server_port = reservation.getsockname()[1]
-        reservation.close()
-
-        server = subprocess.Popen(
-            [
-                sys.executable,
-                str(SRC_DIR / "server.py"),
-                "--host", "127.0.0.1",
-                "--port", str(server_port),
-                "--log", str(server_log),
-            ],
-            cwd=str(SRC_DIR),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        proxy = None
+def wait_port(port, timeout=20):
+    end = time.time() + timeout
+    while time.time() < end:
         try:
-            # Wait briefly for the server to bind.
-            time.sleep(0.3)
-
-            proxy = UDPBlackoutProxy(
-                0,
-                ("127.0.0.1", server_port),
-                BLACKOUT_SECONDS,
-            )
-            proxy.start()
-
-            command = [
-                sys.executable,
-                str(SRC_DIR / "client.py"),
-                "--server", "127.0.0.1",
-                "--port", str(proxy.port),
-                "--duration", str(TEST_DURATION),
-                "--rate", str(SEND_RATE),
-                "--client-id", "1",
-                "--recovery", "on" if recovery_enabled else "off",
-                "--log", str(client_log),
-                "--summary", str(summary_path),
-            ]
-
-            result = subprocess.run(
-                command,
-                cwd=str(SRC_DIR),
-                timeout=TEST_DURATION + 10,
-                capture_output=True,
-                text=True,
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"Client failed in {mode}:\n{result.stdout}\n"
-                    f"{result.stderr}"
-                )
-
-            # Give the server time to flush its log on shutdown.
-            server.send_signal(__import__("signal").SIGINT)
-            try:
-                server.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait()
-
-            received = 0
-            if server_log.exists():
-                with open(server_log, newline="", encoding="utf-8") as file:
-                    received = sum(1 for _ in csv.DictReader(file))
-
-            print(f"\nTest mode: {mode}")
-            print(f"Server DATA arrivals (including retransmissions): {received}")
-            print(f"Proxy forwarded packets: {proxy.forwarded_packets}")
-            print(f"Proxy dropped packets: {proxy.dropped_packets}")
-            print("Client output:")
-            print(result.stdout.strip())
-
-            return {
-                "mode": mode,
-                "server_arrivals": received,
-                "proxy_forwarded": proxy.forwarded_packets,
-                "proxy_dropped": proxy.dropped_packets,
-            }
-
-        finally:
-            if proxy is not None:
-                proxy.close()
-
-            if server.poll() is None:
-                server.terminate()
-                try:
-                    server.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    server.kill()
-                    server.wait()
+            socket.create_connection(('127.0.0.1', port), timeout=1).close()
+            return True
+        except OSError:
+            time.sleep(0.5)
+    return False
 
 
 def main():
-    if not (SRC_DIR / "server.py").exists():
-        raise FileNotFoundError(f"Missing {SRC_DIR / 'server.py'}")
-    if not (SRC_DIR / "client.py").exists():
-        raise FileNotFoundError(f"Missing {SRC_DIR / 'client.py'}")
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--mode', choices=['dynamic', 'static'], default='dynamic')
+    ap.add_argument('--recovery', choices=['on', 'off'], default='on')
+    ap.add_argument('--events', default='8:down:s2-s4,20:up:s2-s4')
+    ap.add_argument('--duration', type=float, default=30)
+    ap.add_argument('--rate', type=float, default=50)
+    ap.add_argument('--clients', type=int, default=2, choices=[1, 2])
+    ap.add_argument('--warmup', type=float, default=6, help='seconds for LLDP discovery')
+    ap.add_argument('--ryu', default='ryu-manager')
+    ap.add_argument('--external-controller', action='store_true',
+                    help='do not start Ryu (you started it yourself)')
+    ap.add_argument('--out', required=True)
+    a = ap.parse_args()
 
-    print("Running UDP blackout recovery test...")
-    print(f"Blackout: {BLACKOUT_SECONDS}s")
-    print(f"Client duration: {TEST_DURATION}s")
-    print(f"Send rate: {SEND_RATE} messages/s")
+    setLogLevel('warning')
+    out = os.path.abspath(a.out)
+    os.makedirs(out, exist_ok=True)
+    events = parse_events(a.events)
+    ctl = None
+    net = None
+    try:
+        if not a.external_controller:
+            env = dict(os.environ, ROUTING_MODE=a.mode, RESULTS_DIR=out)
+            ctl = subprocess.Popen(
+                [a.ryu, '--observe-links',
+                 os.path.join(ROOT, 'controller', 'adaptive_router.py')],
+                env=env, stdout=open(os.path.join(out, 'ryu.log'), 'w'),
+                stderr=subprocess.STDOUT)
+            if not wait_port(6653):
+                raise RuntimeError('Ryu did not start (see %s/ryu.log)' % out)
 
-    recovery_on = run_test(True)
-    recovery_off = run_test(False)
+        net = build_net()
+        net.start()
+        net.waitConnected(timeout=15)
+        time.sleep(a.warmup)
+        h1, h2, h3 = net.get('h1', 'h2', 'h3')
+        if net.ping([h1, h2, h3], timeout='2') > 0:
+            net.ping([h1, h2, h3], timeout='2')     # first round teaches the controller
 
-    print("\nComparison")
-    print("Recovery ON server arrivals:", recovery_on["server_arrivals"])
-    print("Recovery OFF server arrivals:", recovery_off["server_arrivals"])
-    print(
-        "\nNote: server arrivals count retransmitted duplicates as arrivals. "
-        "Use unique (client_id, seq) values to calculate unique delivered "
-        "messages."
-    )
+        py = sys.executable
+        srv = h2.popen([py, os.path.join(ROOT, 'src', 'server.py'), '--port', '5000',
+                        '--log', os.path.join(out, 'server_log.csv')],
+                       stdout=open(os.path.join(out, 'server.out'), 'w'),
+                       stderr=subprocess.STDOUT)
+        time.sleep(1)
+        procs = []
+        for idx, h in enumerate([h1, h3][:a.clients], start=1):
+            procs.append(h.popen(
+                [py, os.path.join(ROOT, 'src', 'client.py'), '--server', h2.IP(),
+                 '--id', str(idx), '--rate', str(a.rate), '--duration', str(a.duration),
+                 '--recovery', a.recovery, '--log', os.path.join(out, 'client%d.csv' % idx)],
+                stdout=open(os.path.join(out, 'client%d.out' % idx), 'w'),
+                stderr=subprocess.STDOUT))
+        t_start = time.time()
+
+        applied = []
+        for t, act, x, y in events:
+            time.sleep(max(0, t_start + t - time.time()))
+            ts = time.time()
+            net.configLinkStatus(x, y, act)
+            applied.append({'t_rel': t, 'ts': ts, 'action': act, 'link': '%s-%s' % (x, y)})
+            print('[%.2fs] link %s-%s %s' % (ts - t_start, x, y, act), flush=True)
+
+        for p in procs:
+            p.wait(timeout=a.duration + 40)
+        srv.send_signal(signal.SIGTERM)
+        srv.wait(timeout=10)
+
+        with open(os.path.join(out, 'meta.json'), 'w') as f:
+            json.dump({'mode': a.mode, 'recovery': a.recovery, 'rate': a.rate,
+                       'duration': a.duration, 'clients': a.clients,
+                       't_start': t_start, 'events': applied}, f, indent=2)
+        print('done ->', out)
+    finally:
+        if net:
+            net.stop()
+        if ctl:
+            ctl.terminate()
+            try:
+                ctl.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                ctl.kill()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

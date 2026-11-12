@@ -1,0 +1,34 @@
+{
+  "mode": "static",
+  "recovery": "on",
+  "rate": 50,
+  "duration": 30.0,
+  "clients": 2,
+  "t_start": 1794193343.3941565,
+  "events": [
+    {
+      "t_rel": 8.0,
+      "ts": 1794193351.3945506,
+      "action": "down",
+      "link": "s2-s4"
+    },
+    {
+      "t_rel": 12.0,
+      "ts": 1794193355.3950846,
+      "action": "up",
+      "link": "s2-s4"
+    },
+    {
+      "t_rel": 16.0,
+      "ts": 1794193359.3946633,
+      "action": "down",
+      "link": "s2-s4"
+    },
+    {
+      "t_rel": 20.0,
+      "ts": 1794193363.3947246,
+      "action": "up",
+      "link": "s2-s4"
+    }
+  ]
+}

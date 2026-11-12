@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive UDP over SDN — Live Dashboard</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#2a313c;--tx:#e6edf3;--mut:#8b949e;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--blue:#58a6ff;--cy:#39d0d8;--pur:#bc8cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);background:#0b0f14;position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0 12px 0 0}header small{color:var(--mut)}
+.pill{padding:3px 10px;border-radius:99px;font-size:12px;border:1px solid var(--line);background:var(--panel)}
+.pill.ok{color:var(--ok);border-color:#1f6f33}.pill.bad{color:var(--bad);border-color:#7d2420}.pill.warn{color:var(--warn);border-color:#6b4f12}
+main{padding:14px 18px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.card h2{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:center}
+.c12{grid-column:span 12}.c8{grid-column:span 8}.c7{grid-column:span 7}.c6{grid-column:span 6}.c5{grid-column:span 5}.c4{grid-column:span 4}.c3{grid-column:span 3}
+@media(max-width:1100px){.c8,.c7,.c6,.c5,.c4{grid-column:span 12}.c3{grid-column:span 6}}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}.kpi .v{font-size:22px;font-weight:650;margin-top:2px;white-space:nowrap}.kpi .s{font-size:11px;color:var(--mut)}
+button,select{background:#21262d;color:var(--tx);border:1px solid #3a424d;border-radius:7px;padding:6px 11px;font:inherit;cursor:pointer}
+button:hover{background:#2b323b}button.danger{border-color:#7d2420;color:#ff938c}button.good{border-color:#1f6f33;color:#7ee787}button.primary{background:#1f6feb;border-color:#388bfd}
+button.on{background:#1f3a5f;border-color:var(--blue)}button:disabled{opacity:.45;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}.lbl{font-size:11px;color:var(--mut);margin-top:10px;text-transform:uppercase;letter-spacing:.05em}
+canvas{width:100%;display:block}svg{width:100%;display:block}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:600}
+#log{height:230px;overflow:auto;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace}#log div{padding:1px 0;border-bottom:1px solid #1d232c}
+.tag{display:inline-block;min-width:44px;text-align:center;border-radius:4px;padding:0 5px;margin-right:6px;font-size:10.5px;color:#0d1117;font-weight:700}
+.t-ctl{background:var(--blue)}.t-app{background:var(--pur)}.t-user{background:var(--warn)}.t-scenario{background:var(--cy)}.t-sys{background:var(--bad)}
+pre{margin:0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;color:#c9d1d9;max-height:200px;overflow:auto}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11.5px;color:var(--mut);margin-top:4px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.lk{cursor:pointer}.lk:hover line.main{stroke-width:7}
+@keyframes flow{to{stroke-dashoffset:-28}}.act{stroke-dasharray:10 6;animation:flow .7s linear infinite}
+.seg button{border-radius:0}.seg button:first-child{border-radius:7px 0 0 7px}.seg button:last-child{border-radius:0 7px 7px 0}
+</style></head><body>
+<header>
+  <h1>Adaptive UDP Communication over SDN <small>— failure detection &amp; recovery</small></h1>
+  <span class="pill" id="pBackend">backend</span><span class="pill" id="pMode">mode</span>
+  <span class="pill" id="pApp">app</span><span class="pill" id="pTraffic">traffic</span><span class="pill" id="pScn" style="display:none"></span>
+  <span style="flex:1"></span><small id="clock"></small>
+</header>
+<main>
+<div class="c12 kpis" id="kpis"></div>
+
+<div class="card c8"><h2>Topology — click a link to break / restore it
+  <span style="text-transform:none;letter-spacing:0">
+  <span style="color:var(--ok)">━ up</span> &nbsp;<span style="color:var(--bad)">┅ down</span> &nbsp;<span style="color:var(--warn)">┅ down, controller unaware</span> &nbsp;<span style="color:var(--cy)">━ active path</span></span></h2>
+  <svg id="topo" viewBox="0 0 820 330"></svg></div>
+
+<div class="card c4"><h2>Control panel</h2>
+  <div class="lbl" style="margin-top:0">Break / restore link</div><div class="row" id="linkBtns"></div>
+  <div class="row"><button class="good" onclick="api('/api/restore')">Restore all links</button></div>
+  <div class="lbl">Failure scenarios (challenging cases)</div>
+  <div class="row"><button onclick="scn('single')">Single failure</button><button onclick="scn('double')">Double failure</button><button onclick="scn('flap')">Link flapping</button><button class="danger" onclick="scn('stop')">Abort</button></div>
+  <div class="lbl">Controller (SDN) mode</div>
+  <div class="row seg"><button id="mDyn" onclick="mode('dynamic')">SDN dynamic rerouting</button><button id="mSta" onclick="mode('static')">Static baseline</button></div>
+  <div class="lbl">UDP application</div>
+  <div class="row seg"><button id="rOn" onclick="rec(true)">App recovery ON</button><button id="rOff" onclick="rec(false)">OFF (plain UDP)</button></div>
+  <div class="row">Rate <select id="selRate"><option>20</option><option selected>50</option><option>100</option><option>200</option></select> msg/s
+   Clients <select id="selCl"><option>1</option><option selected>2</option></select></div>
+  <div class="row"><button class="primary" onclick="traffic('start')">Start / restart traffic</button><button onclick="traffic('stop')">Stop</button></div>
+  <div class="lbl">Automatic evaluation</div>
+  <div class="row"><button class="primary" id="bBench" onclick="api('/api/benchmark',{scenario:'single'})">Run baseline vs adaptive benchmark (~2.5 min)</button></div>
+  <div class="row"><a href="/api/export" download="session.json" style="color:var(--blue)">Download session data (JSON)</a></div>
+</div>
+
+<div class="card c6"><h2>Round-trip time per message (ms)</h2><canvas id="chRtt" height="210"></canvas>
+  <div class="legend"><span><i style="background:#58a6ff"></i>client 1 (h1)</span><span><i style="background:#f0883e"></i>client 2 (h3)</span><span><i style="background:rgba(248,81,73,.35)"></i>link down</span></div></div>
+<div class="card c6"><h2>Delivered messages per second (ACKs received)</h2><canvas id="chAck" height="210"></canvas>
+  <div class="legend"><span>drops to 0 while the path is dead · burst afterwards = application resend</span></div></div>
+<div class="card c6"><h2>Link utilisation (kbit/s, measured by the controller)</h2><canvas id="chLink" height="210"></canvas><div class="legend" id="lgLink"></div></div>
+<div class="card c6"><h2>Un-ACKed messages and cumulative loss</h2><canvas id="chLoss" height="210"></canvas>
+  <div class="legend"><span><i style="background:#d29922"></i>pending + backlog</span><span><i style="background:#f85149"></i>lost (all clients)</span></div></div>
+
+<div class="card c7"><h2>Failure incidents — measured live</h2>
+  <table id="tbInc"><thead><tr><th>#</th><th>Link</th><th>Mode / app</th><th>Detect</th><th>Reroute</th><th>Recovery</th><th>Path</th></tr></thead><tbody></tbody></table>
+  <div class="legend"><span>Detect = failure → controller notices · Reroute = failure → new flows pushed · Recovery = failure → first message sent afterwards is ACKed</span></div></div>
+<div class="card c5"><h2>Event log</h2><div id="log"></div></div>
+
+<div class="card c5"><h2>OpenFlow table <span style="text-transform:none"><select id="selSw" onchange="flows()"><option>s1</option><option>s2</option><option>s3</option><option>s4</option><option>s5</option></select> <label><input type="checkbox" id="chkFl" checked> auto</label></span></h2><pre id="flows"></pre>
+  <div class="legend"><span>rules are rewritten by the controller on every topology change</span></div></div>
+<div class="card c7"><h2>Live benchmark — static baseline vs SDN + app recovery <span id="benchMsg" style="text-transform:none"></span></h2>
+  <table id="tbBench"><thead><tr><th>Configuration</th><th>Recovery ms</th><th>Detect ms</th><th>Loss %</th><th>Retx</th><th>RTT pre</th><th>RTT backup</th><th>p95 e2e</th></tr></thead><tbody></tbody></table></div>
+
+<div class="card c12"><h2>Evaluation of saved experiments (results/summary_by_config.csv, 3 runs each) — 4 configurations × 3 scenarios</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+  <div><canvas id="bOut" height="230"></canvas></div><div><canvas id="bLoss" height="230"></canvas></div><div><canvas id="bLat" height="230"></canvas></div></div>
+  <div class="legend" id="lgCfg"></div></div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const ISL=['s1-s2','s2-s4','s1-s3','s3-s5','s4-s5'];
+const LCOL={'s1-s2':'#58a6ff','s2-s4':'#3fb950','s1-s3':'#f0883e','s3-s5':'#bc8cff','s4-s5':'#39d0d8'};
+const CFG=[['static-noapp','Static + plain UDP','#f85149'],['static-app','Static + app recovery','#d29922'],['dynamic-noapp','SDN reroute + plain UDP','#58a6ff'],['dynamic-app','SDN + app recovery (full)','#3fb950']];
+const WIN=60;
+let S={samples:{1:[],2:[]},rates:[],since:0,evn:0,snap:null,hist:[],events:[]};
+const api=(p,d)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d||{})}).then(r=>r.json());
+const toggleLink=l=>api('/api/link',{link:l,action:'toggle'});
+const scn=n=>api('/api/scenario',{name:n}),mode=m=>api('/api/mode',{mode:m}),rec=r=>api('/api/traffic',{action:'start',recovery:r,rate:+$('#selRate').value,clients:+$('#selCl').value});
+const traffic=a=>api('/api/traffic',{action:a,recovery:S.snap?S.snap.recovery:true,rate:+$('#selRate').value,clients:+$('#selCl').value});
+
+/* ---------- generic canvas helpers ---------- */
+function prep(c){const r=devicePixelRatio||1,w=c.clientWidth,h=+c.getAttribute('height');c.width=w*r;c.height=h*r;const x=c.getContext('2d');x.scale(r,r);x.clearRect(0,0,w,h);return[x,w,h]}
+function niceMax(v){if(v<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(v))),m=v/p;return(m<=1?1:m<=2?2:m<=5?5:10)*p}
+function lineChart(c,o){ // o:{t0,t1,series:[{pts,color,dots}],bands:[[a,b,color]],marks:[[t,color]],ymax,unit}
+  const[x,w,h]=prep(c),L=44,R=8,T=8,B=20,pw=w-L-R,ph=h-T-B;let ym=o.ymax||0;
+  if(!o.ymax)for(const s of o.series)for(const p of s.pts)if(p[0]>=o.t0&&p[1]>ym)ym=p[1];ym=niceMax(ym*1.1);
+  const X=t=>L+(t-o.t0)/(o.t1-o.t0)*pw,Y=v=>T+ph-v/ym*ph;
+  x.font='10px system-ui';x.strokeStyle='#2a313c';x.fillStyle='#8b949e';x.lineWidth=1;
+  for(let i=0;i<=4;i++){const v=ym*i/4,y=Y(v);x.beginPath();x.moveTo(L,y);x.lineTo(w-R,y);x.stroke();x.textAlign='right';x.fillText(v>=100?Math.round(v):+v.toFixed(1),L-5,y+3)}
+  x.textAlign='center';for(let s=0;s<=WIN;s+=10){x.fillText(s===0?'now':'-'+s+'s',X(o.t1-s),h-6)}
+  for(const[a,b,col]of o.bands||[]){const xa=Math.max(L,X(a)),xb=Math.min(w-R,X(b));if(xb>xa){x.fillStyle=col;x.fillRect(xa,T,xb-xa,ph)}}
+  for(const[t,col]of o.marks||[]){if(t<o.t0)continue;x.strokeStyle=col;x.setLineDash([4,3]);x.beginPath();x.moveTo(X(t),T);x.lineTo(X(t),T+ph);x.stroke();x.setLineDash([])}
+  x.save();x.beginPath();x.rect(L,T,pw,ph);x.clip();
+  for(const s of o.series){x.strokeStyle=x.fillStyle=s.color;x.lineWidth=1.6;
+    if(s.dots){for(const p of s.pts){if(p[0]<o.t0)continue;x.fillRect(X(p[0])-1,Y(Math.min(p[1],ym))-1,2.4,2.4)}}
+    else{x.beginPath();let f=true;for(const p of s.pts){if(p[0]<o.t0-2)continue;f?x.moveTo(X(p[0]),Y(p[1])):x.lineTo(X(p[0]),Y(p[1]));f=false}x.stroke()}}
+  x.restore();
+}
+function barChart(c,title,groups,vals,o){ // vals[cfgIdx][groupIdx]
+  const[x,w,h]=prep(c),L=40,B=34,T=22,pw=w-L-6,ph=h-T-B;let mx=1;
+  vals.forEach(r=>r.forEach(v=>{if(v>mx)mx=v}));
+  const f=o.log?v=>Math.log10(1+v):v=>v,top=o.log?Math.ceil(f(mx)):niceMax(mx*1.1);
+  x.font='11px system-ui';x.fillStyle='#e6edf3';x.textAlign='left';x.fillText(title,4,12);
+  x.font='10px system-ui';x.fillStyle='#8b949e';x.strokeStyle='#2a313c';
+  const ticks=o.log?[0,1,2,3,4,5].filter(t=>t<=top).map(t=>[t,Math.pow(10,t)-1]):[0,1,2,3,4].map(i=>[top*i/4,top*i/4]);
+  for(const[tv,lab]of ticks){const y=T+ph-tv/top*ph;x.beginPath();x.moveTo(L,y);x.lineTo(w-4,y);x.stroke();x.textAlign='right';x.fillText(lab>=1000?(lab/1000).toFixed(0)+'k':Math.round(lab*10)/10,L-4,y+3)}
+  const gw=pw/groups.length,bw=gw/(CFG.length+1);
+  groups.forEach((g,gi)=>{x.textAlign='center';x.fillStyle='#8b949e';x.fillText(g,L+gi*gw+gw/2,h-18);
+    CFG.forEach((cf,ci)=>{const v=vals[ci][gi]||0,bh=f(v)/top*ph,bx=L+gi*gw+bw*(ci+.5);x.fillStyle=cf[2];x.fillRect(bx,T+ph-bh,bw*.9,bh);
+      x.fillStyle='#e6edf3';x.font='9px system-ui';x.fillText(v>=100?Math.round(v):+v.toFixed(1),bx+bw*.45,T+ph-bh-3);x.font='10px system-ui'})});
+  x.fillStyle='#8b949e';x.textAlign='left';x.fillText(o.unit+(o.log?' (log scale)':''),4,h-4);
+}
+
+/* ---------- topology ---------- */
+const N={h1:[55,105],h3:[55,235],s1:[190,170],s2:[420,60],s3:[330,270],s5:[560,270],s4:[660,170],h2:[775,170]};
+const LATMS={'s1-s2':2,'s2-s4':2,'s1-s3':2,'s3-s5':10,'s4-s5':2};
+function buildTopo(){
+  let h='';
+  for(const[a,b]of[['h1','s1'],['h3','s1'],['h2','s4']])h+=`<line id="hl-${a}" x1="${N[a][0]}" y1="${N[a][1]}" x2="${N[b][0]}" y2="${N[b][1]}" stroke="#3a424d" stroke-width="3"/>`;
+  for(const l of ISL){const[a,b]=l.split('-'),mx=(N[a][0]+N[b][0])/2,my=(N[a][1]+N[b][1])/2;
+    h+=`<g class="lk" onclick="toggleLink('${l}')"><line id="ln-${l}" class="main" x1="${N[a][0]}" y1="${N[a][1]}" x2="${N[b][0]}" y2="${N[b][1]}" stroke="#3fb950" stroke-width="5"/>
+    <line id="ac-${l}" x1="${N[a][0]}" y1="${N[a][1]}" x2="${N[b][0]}" y2="${N[b][1]}" stroke="#39d0d8" stroke-width="3" opacity="0"/>
+    <line x1="${N[a][0]}" y1="${N[a][1]}" x2="${N[b][0]}" y2="${N[b][1]}" stroke="transparent" stroke-width="22"/>
+    <rect x="${mx-34}" y="${my-12}" width="68" height="24" rx="6" fill="#0d1117" stroke="#2a313c"/>
+    <text id="tx-${l}" x="${mx}" y="${my-1}" text-anchor="middle" font-size="10" fill="#e6edf3">${l.replace('-','–')} · ${LATMS[l]}ms</text>
+    <text id="ut-${l}" x="${mx}" y="${my+9}" text-anchor="middle" font-size="9" fill="#8b949e">0 kbit/s</text></g>`}
+  for(const[n,p]of Object.entries(N)){const host=n[0]==='h';
+    h+=`<g><${host?'rect':'circle'} ${host?`x="${p[0]-22}" y="${p[1]-15}" width="44" height="30" rx="6"`:`cx="${p[0]}" cy="${p[1]}" r="22"`} fill="${host?'#1f2937':'#0b2239'}" stroke="${host?'#8b949e':'#58a6ff'}" stroke-width="2"/>
+    <text x="${p[0]}" y="${p[1]+4}" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf3">${n}</text></g>`;
+    const sub={h1:'UDP client 1',h3:'UDP client 2',h2:'UDP server :5000'}[n];if(sub)h+=`<text x="${p[0]}" y="${p[1]+(n==='h1'?-24:32)}" text-anchor="middle" font-size="10" fill="#8b949e">${sub}</text>`}
+  h+=`<text x="620" y="40" font-size="11" fill="#8b949e" text-anchor="middle">Ryu controller (OpenFlow 1.3) manages s1–s5</text>`;
+  $('#topo').innerHTML=h;
+  $('#linkBtns').innerHTML=ISL.map(l=>`<button id="bt-${l}" onclick="toggleLink('${l}')">Break ${l.replace('-','–')}</button>`).join('');
+}
+function updTopo(s){
+  const act=new Set();let p=s.paths&&s.paths['1'];
+  if(p){for(let i=0;i+1<p.length;i++)act.add([p[i],p[i+1]].sort().join('-'))}
+  for(const l of ISL){const st=s.links[l],ln=$('#ln-'+l),ac=$('#ac-'+l);
+    const col=st.up?'#3fb950':st.ctl?'#d29922':'#f85149';ln.setAttribute('stroke',col);ln.setAttribute('stroke-dasharray',st.up?'':'8 6');
+    const on=act.has(l)&&st.up&&s.traffic;ac.setAttribute('opacity',on?1:0);ac.setAttribute('class',on?'act':'');
+    const b=$('#bt-'+l);b.textContent=(st.up?'Break ':'Restore ')+l.replace('-','–');b.className=st.up?'danger':'good';
+    const r=S.rates.length?S.rates[S.rates.length-1][1][l]:0;$('#ut-'+l).textContent=(r||0).toFixed(0)+' kbit/s'}
+  ['h1','h3'].forEach(h=>$('#hl-'+h).setAttribute('stroke',s.traffic&&p?'#39d0d8':'#3a424d'));$('#hl-h2').setAttribute('stroke',s.traffic&&p?'#39d0d8':'#3a424d');
+}
+
+/* ---------- KPIs ---------- */
+function kpi(l,v,s,c){return`<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${c||'inherit'}">${v}</div><div class="s">${s||'&nbsp;'}</div></div>`}
+function updKpi(s){
+  const cl=Object.values(s.clients),sum=k=>cl.reduce((a,c)=>a+(c[k]||0),0),sent=sum('sent'),lost=sum('lost'),acked=sum('acked');
+  const rt=S.samples[1].filter(a=>a[0]>s.now-2),rtt=rt.length?rt.reduce((a,b)=>a+b[2],0)/rt.length:null;
+  const p=s.paths['1'],inc=s.incidents[s.incidents.length-1],states=cl.map(c=>c.state);
+  const rec=states.includes('RECOVERING');
+  const f=v=>v==null?'—':v<1000?v.toFixed(0)+' ms':(v/1000).toFixed(2)+' s';
+  $('#kpis').innerHTML=
+   kpi('Active path (h1→h2)',p?p.join(' → '):'<span style="color:var(--bad)">NO PATH</span>',p?(p.length-1)+' switch hops':'unreachable')+
+   kpi('RTT (last 2 s)',rtt==null?'—':rtt.toFixed(1)+' ms','primary ≈ 12–18 ms, backup ≈ 35–45 ms',rtt>30?'var(--warn)':'')+
+   kpi('Packet loss',sent?(100*lost/sent).toFixed(2)+' %':'—',lost+' lost of '+sent+' sent',lost?'var(--bad)':'var(--ok)')+
+   kpi('Delivered (ACKed)',acked,'retransmissions: '+sum('retx'))+
+   kpi('Application state',rec?'RECOVERING':(cl.length?'NORMAL':'idle'),'outages handled: '+sum('recoveries')+' · probes: '+sum('probes'),rec?'var(--warn)':'var(--ok)')+
+   kpi('Last failure: detect',inc?f(inc.detect_ms):'—',inc?'controller notices the failure':'no failure yet')+
+   kpi('Last failure: reroute',inc?f(inc.reroute_ms):'—',inc?'new flows installed':' ')+
+   kpi('Last failure: recovery',inc?(inc.on_path?f(inc.recovery_ms):'no impact'):'—',inc?(inc.on_path?'first post-failure message ACKed':'link was not on active path'):' ',inc&&inc.recovery_ms>1000?'var(--bad)':'var(--ok)');
+}
+
+/* ---------- polling & drawing ---------- */
+async function poll(){
+  try{
+    const s=await (await fetch(`/api/state?since=${S.since}&ev=${S.evn}`)).json();S.snap=s;S.since=s.now-0.01;
+    for(const c of[1,2]){S.samples[c]=S.samples[c].concat(s.samples[c]||[]).filter(a=>a[0]>s.now-130)}
+    if(s.rates.length)S.rates=S.rates.concat(s.rates.filter(r=>!S.rates.length||r[0]>S.rates[S.rates.length-1][0])).filter(r=>r[0]>s.now-130);
+    const cl=Object.values(s.clients);S.hist.push([s.now,cl.reduce((a,c)=>a+c.pending+c.backlog,0),cl.reduce((a,c)=>a+c.lost,0)]);S.hist=S.hist.filter(h=>h[0]>s.now-130);
+    for(const e of s.events){S.events.push(e);addLog(e)}S.evn+=s.events.length;
+    pills(s);updTopo(s);updKpi(s);draw(s);incTable(s);benchTable(s);
+  }catch(e){$('#pBackend').textContent='backend unreachable';$('#pBackend').className='pill bad'}
+}
+function pills(s){
+  $('#pBackend').textContent='backend: '+s.backend;$('#pBackend').className='pill';
+  const d=s.mode==='dynamic';$('#pMode').textContent=d?'controller: SDN dynamic rerouting':'controller: STATIC baseline';$('#pMode').className='pill '+(d?'ok':'warn');
+  $('#pApp').textContent='app recovery: '+(s.recovery?'ON':'OFF');$('#pApp').className='pill '+(s.recovery?'ok':'warn');
+  $('#pTraffic').textContent=s.traffic?`traffic: ${s.nclients} client(s) @ ${s.rate}/s`:'traffic: stopped';$('#pTraffic').className='pill '+(s.traffic?'ok':'bad');
+  const sc=$('#pScn'),busy=s.scenario.running||s.bench.running;sc.style.display=busy?'':'none';sc.className='pill warn';sc.textContent=s.bench.running?'benchmark: '+s.bench.msg:'scenario: '+s.scenario.msg;
+  $('#mDyn').className=d?'on':'';$('#mSta').className=d?'':'on';$('#rOn').className=s.recovery?'on':'';$('#rOff').className=s.recovery?'':'on';
+  $('#bBench').disabled=busy;$('#clock').textContent=new Date(s.now*1000).toLocaleTimeString();
+}
+function downBands(t1){ // red bands for intervals where some link was down (from user/scenario events)
+  const open={},b=[];for(const e of S.events){if(e.src!=='user'&&e.src!=='scenario')continue;
+    if(e.ev==='link_down'&&!(e.detail in open))open[e.detail]=e.ts;else if(e.ev==='link_up'&&e.detail in open){b.push([open[e.detail],e.ts,'rgba(248,81,73,.16)']);delete open[e.detail]}}
+  for(const l in open)b.push([open[l],t1,'rgba(248,81,73,.16)']);return b}
+function marks(){return S.events.filter(e=>(e.src==='user'||e.src==='scenario')&&(e.ev==='link_down'||e.ev==='link_up')).map(e=>[e.ts,e.ev==='link_down'?'#f85149':'#3fb950'])}
+function draw(s){
+  const t1=s.now,t0=t1-WIN,bands=downBands(t1),mk=marks();
+  lineChart($('#chRtt'),{t0,t1,bands,marks:mk,series:[1,2].map(c=>({pts:S.samples[c].map(a=>[a[0],a[2]]),dots:true,color:c===1?'#58a6ff':'#f0883e'}))});
+  const ack=c=>{const bins=new Array(WIN*2).fill(0);for(const a of S.samples[c]){const i=Math.floor((a[0]-t0)*2);if(i>=0&&i<bins.length)bins[i]++}return bins.map((v,i)=>[t0+(i+.5)/2,v*2]).slice(0,-1)};
+  lineChart($('#chAck'),{t0,t1,bands,marks:mk,series:[{pts:ack(1),color:'#58a6ff'},{pts:ack(2),color:'#f0883e'}]});
+  lineChart($('#chLink'),{t0,t1,bands,marks:mk,series:ISL.map(l=>({pts:S.rates.map(r=>[r[0],r[1][l]||0]),color:LCOL[l]}))});
+  lineChart($('#chLoss'),{t0,t1,bands,marks:mk,series:[{pts:S.hist.map(h=>[h[0],h[1]]),color:'#d29922'},{pts:S.hist.map(h=>[h[0],h[2]]),color:'#f85149'}]});
+}
+function addLog(e){
+  const d=document.createElement('div');
+  d.innerHTML=`<span style="color:var(--mut)">${new Date(e.ts*1000).toLocaleTimeString([], {hour12:false})}.${String(Math.floor(e.ts*1000%1000)).padStart(3,'0')}</span> <span class="tag t-${e.src}">${e.src}</span><b>${e.ev}</b> <span style="color:var(--mut)">${e.detail.replace(/paths=\[(.*)\]/,'path: $1')}</span>`;
+  const L=$('#log');L.appendChild(d);while(L.children.length>300)L.removeChild(L.firstChild);L.scrollTop=L.scrollHeight}
+const f1=v=>v==null?'—':v<1000?v.toFixed(0)+' ms':(v/1000).toFixed(2)+' s';
+function incTable(s){
+  $('#tbInc tbody').innerHTML=s.incidents.slice().reverse().map(i=>`<tr><td>${i.id}</td><td>${i.link}</td><td>${i.mode==='dynamic'?'SDN':'static'} / ${i.recovery?'app':'plain'}</td>
+   <td>${i.mode==='static'?'<span style="color:var(--bad)">ignored</span>':f1(i.detect_ms)}</td><td>${i.mode==='static'?'—':f1(i.reroute_ms)}</td>
+   <td style="color:${!i.on_path?'var(--mut)':i.recovery_ms==null?'var(--warn)':i.recovery_ms>1000?'var(--bad)':'var(--ok)'}">${!i.on_path?'off-path':i.recovery_ms==null?'waiting…':f1(i.recovery_ms)}</td>
+   <td style="font-size:11px">${(i.path_before||[]).join('›')} ⇒ ${i.path_after?i.path_after.join('›'):'…'}</td></tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--mut)">break a link to see measurements</td></tr>';
+}
+function benchTable(s){
+  const b=s.bench;$('#benchMsg').textContent=b.running?'— '+b.msg:(b.rows&&b.rows.length?'— done':'');
+  $('#tbBench tbody').innerHTML=(b.rows||[]).map(r=>`<tr><td>${r.label}</td><td>${f1(r.recovery_ms)}</td><td>${r.mode==='static'?'ignored':f1(r.detect_ms)}</td><td style="color:${r.loss_pct>0?'var(--bad)':'var(--ok)'}">${r.loss_pct}</td><td>${r.retx}</td><td>${r.rtt_pre??'—'}</td><td>${r.rtt_backup??'—'}</td><td>${r.e2e_p95??'—'}</td></tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--mut)">press “Run baseline vs adaptive benchmark”</td></tr>';
+}
+async function flows(){if(!S.snap)return;try{const j=await (await fetch('/api/flows?sw='+$('#selSw').value)).json();$('#flows').textContent=j.text||'(no flows)'}catch(e){}}
+async function results(){
+  const r=await (await fetch('/api/results')).json(),sc=['single','double','flap'].filter(s=>r[s]);
+  if(!sc.length){$('#bOut').outerHTML='<div style="color:var(--mut)">No results/summary_by_config.csv found — run experiments/run_all.sh and analysis/analyze.py</div>';return}
+  const v=m=>CFG.map(c=>sc.map(s=>(r[s][c[0]]||{})[m]||0));
+  barChart($('#bOut'),'Service outage after first failure',sc,v('outage_ms'),{unit:'ms',log:true});
+  barChart($('#bLoss'),'Application-level packet loss',sc,v('loss_pct'),{unit:'% of messages'});
+  barChart($('#bLat'),'p95 message latency (generation → ACK)',sc,v('e2e_p95_ms'),{unit:'ms',log:true});
+  $('#lgCfg').innerHTML=CFG.map(c=>`<span><i style="background:${c[2]}"></i>${c[1]}</span>`).join('');
+}
+buildTopo();results();poll();setInterval(poll,500);setInterval(()=>{if($('#chkFl').checked)flows()},2000);setTimeout(flows,800);
+addEventListener('resize',()=>{if(S.snap)draw(S.snap);results()});
+</script></body></html>

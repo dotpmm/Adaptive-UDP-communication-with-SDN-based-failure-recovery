@@ -1,0 +1,9 @@
+{
+  "mode": "static",
+  "recovery": "off",
+  "rate": 50,
+  "duration": 30.0,
+  "clients": 2,
+  "t_start": 1794193813.0526667,
+  "events": []
+}

@@ -1,0 +1,74 @@
+ts,event,detail
+1794193799.970788,controller_start,mode=static
+1794193801.313454,switch_up,s4
+1794193801.313719,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193801.332172,switch_up,s5
+1794193801.332333,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193801.333680,switch_up,s1
+1794193801.333770,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193801.333805,switch_up,s2
+1794193801.333829,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193801.333853,switch_up,s3
+1794193801.333873,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193801.342423,link_up,s5:2 -> s4:3
+1794193801.342566,link_up,s5:1 -> s3:2
+1794193801.346246,link_up,s2:1 -> s1:3
+1794193801.346417,link_up,s3:1 -> s1:4
+1794193801.346456,link_up,s2:2 -> s4:2
+1794193801.346483,link_up,s3:2 -> s5:1
+1794193801.348244,link_up,s1:3 -> s2:1
+1794193801.348357,link_up,s1:4 -> s3:1
+1794193801.349337,link_up,s4:3 -> s5:2
+1794193801.349868,link_up,s4:2 -> s2:2
+1794193811.875351,host_learned,10.0.0.1 00:00:00:00:00:01 at s1:1
+1794193811.876489,routes_updated,reason=host_learned flows=5 took_ms=0.93 paths=[]
+1794193811.883272,host_learned,10.0.0.2 00:00:00:00:00:02 at s4:1
+1794193811.885010,routes_updated,reason=host_learned flows=10 took_ms=1.53 paths=[10.0.0.1->10.0.0.2:s1>s2>s4]
+1794193811.925809,host_learned,10.0.0.3 00:00:00:00:00:03 at s1:2
+1794193811.928084,routes_updated,reason=host_learned flows=15 took_ms=2.06 paths=[10.0.0.1->10.0.0.2:s1>s2>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s2>s1]
+1794193843.719828,port_status,s1 port=1 down=False
+1794193843.719964,port_status,s1 port=1 down=True
+1794193843.719997,link_down_ignored_static,s1:1 via port_status
+1794193843.764443,port_status,s4 port=1 down=False
+1794193843.765133,port_status,s4 port=1 down=True
+1794193843.765201,link_down_ignored_static,s4:1 via port_status
+1794193843.794335,port_status,s1 port=2 down=False
+1794193843.796074,port_status,s1 port=2 down=True
+1794193843.796117,link_down_ignored_static,s1:2 via port_status
+1794193843.832166,port_status,s1 port=3 down=False
+1794193843.832761,port_status,s1 port=3 down=True
+1794193843.832846,link_down_ignored_static,s1:3 via port_status
+1794193843.832990,link_down_ignored_static,s1:3 via lldp_event
+1794193843.833027,link_down_ignored_static,s2:1 via lldp_event
+1794193843.834472,port_status,s2 port=1 down=False
+1794193843.835067,port_status,s2 port=1 down=True
+1794193843.835136,link_down_ignored_static,s2:1 via port_status
+1794193843.920696,port_status,s4 port=2 down=True
+1794193843.920832,link_down_ignored_static,s4:2 via port_status
+1794193843.921935,link_down_ignored_static,s4:2 via lldp_event
+1794193843.922015,link_down_ignored_static,s2:2 via lldp_event
+1794193843.922051,port_status,s1 port=4 down=True
+1794193843.922076,link_down_ignored_static,s1:4 via port_status
+1794193843.922101,port_status,s2 port=2 down=True
+1794193843.922120,link_down_ignored_static,s2:2 via port_status
+1794193843.922241,port_status,s3 port=1 down=True
+1794193843.922273,link_down_ignored_static,s3:1 via port_status
+1794193843.922543,link_down_ignored_static,s1:4 via lldp_event
+1794193843.922582,link_down_ignored_static,s3:1 via lldp_event
+1794193844.043473,port_status,s5 port=1 down=True
+1794193844.044183,link_down_ignored_static,s5:1 via port_status
+1794193844.044329,port_status,s5 port=2 down=True
+1794193844.044413,link_down_ignored_static,s5:2 via port_status
+1794193844.044505,port_status,s4 port=3 down=True
+1794193844.044582,link_down_ignored_static,s4:3 via port_status
+1794193844.044632,port_status,s3 port=2 down=True
+1794193844.044711,link_down_ignored_static,s3:2 via port_status
+1794193844.044985,link_down_ignored_static,s5:1 via lldp_event
+1794193844.045096,link_down_ignored_static,s3:2 via lldp_event
+1794193844.045126,link_down_ignored_static,s5:2 via lldp_event
+1794193844.045151,link_down_ignored_static,s4:3 via lldp_event
+1794193844.052251,switch_down,s4
+1794193844.068392,switch_down,s1
+1794193844.080427,switch_down,s3
+1794193844.091656,switch_down,s2
+1794193844.107722,switch_down,s5

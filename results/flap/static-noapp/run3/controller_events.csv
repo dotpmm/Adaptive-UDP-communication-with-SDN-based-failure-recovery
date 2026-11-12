@@ -1,0 +1,103 @@
+ts,event,detail
+1794193280.467787,controller_start,mode=static
+1794193281.803600,switch_up,s4
+1794193281.803781,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193281.803820,switch_up,s1
+1794193281.803844,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193281.804156,switch_up,s3
+1794193281.804186,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193281.831996,switch_up,s5
+1794193281.836251,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193281.843926,link_up,s1:4 -> s3:1
+1794193281.844589,link_up,s3:1 -> s1:4
+1794193281.844631,link_up,s3:2 -> s5:1
+1794193281.844660,switch_up,s2
+1794193281.844685,routes_updated,reason=switch_up flows=0 took_ms=0.00 paths=[]
+1794193281.849366,link_up,s5:1 -> s3:2
+1794193281.855292,link_up,s5:2 -> s4:3
+1794193281.855359,link_up,s4:3 -> s5:2
+1794193281.855387,link_up,s4:2 -> s2:2
+1794193281.858243,link_up,s2:2 -> s4:2
+1794193281.858353,link_up,s2:1 -> s1:3
+1794193281.860274,link_up,s1:3 -> s2:1
+1794193292.120949,host_learned,10.0.0.1 00:00:00:00:00:01 at s1:1
+1794193292.122608,routes_updated,reason=host_learned flows=5 took_ms=0.95 paths=[]
+1794193292.134856,host_learned,10.0.0.2 00:00:00:00:00:02 at s4:1
+1794193292.137041,routes_updated,reason=host_learned flows=10 took_ms=1.98 paths=[10.0.0.1->10.0.0.2:s1>s2>s4]
+1794193292.184085,host_learned,10.0.0.3 00:00:00:00:00:03 at s1:2
+1794193292.188492,routes_updated,reason=host_learned flows=15 took_ms=3.46 paths=[10.0.0.1->10.0.0.2:s1>s2>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s2>s1]
+1794193301.348650,port_status,s4 port=2 down=False
+1794193301.348912,port_status,s4 port=2 down=True
+1794193301.348949,link_down_ignored_static,s4:2 via port_status
+1794193301.348978,port_status,s4 port=2 down=True
+1794193301.349001,link_down_ignored_static,s4:2 via port_status
+1794193301.349426,link_down_ignored_static,s4:2 via lldp_event
+1794193301.349977,link_down_ignored_static,s2:2 via lldp_event
+1794193301.350049,port_status,s2 port=2 down=False
+1794193301.350079,port_status,s2 port=2 down=True
+1794193301.350101,link_down_ignored_static,s2:2 via port_status
+1794193305.333233,port_status,s2 port=2 down=True
+1794193305.334281,link_down_ignored_static,s2:2 via port_status
+1794193305.349164,port_status,s4 port=2 down=False
+1794193305.350918,port_status,s2 port=2 down=False
+1794193305.394120,link_up,s2:2 -> s4:2
+1794193305.394387,link_up,s4:2 -> s2:2
+1794193309.351308,port_status,s4 port=2 down=False
+1794193309.353674,port_status,s4 port=2 down=True
+1794193309.353762,link_down_ignored_static,s4:2 via port_status
+1794193309.354231,port_status,s2 port=2 down=False
+1794193309.354306,port_status,s2 port=2 down=True
+1794193309.354340,link_down_ignored_static,s2:2 via port_status
+1794193309.354933,link_down_ignored_static,s4:2 via lldp_event
+1794193309.355115,link_down_ignored_static,s2:2 via lldp_event
+1794193309.355162,port_status,s4 port=2 down=True
+1794193309.355193,link_down_ignored_static,s4:2 via port_status
+1794193313.337487,port_status,s2 port=2 down=True
+1794193313.337930,link_down_ignored_static,s2:2 via port_status
+1794193313.364542,port_status,s4 port=2 down=False
+1794193313.366458,port_status,s2 port=2 down=False
+1794193313.374201,link_up,s4:2 -> s2:2
+1794193313.377256,link_up,s2:2 -> s4:2
+1794193327.951366,port_status,s1 port=1 down=False
+1794193327.951511,port_status,s1 port=1 down=True
+1794193327.951544,link_down_ignored_static,s1:1 via port_status
+1794193328.001739,port_status,s4 port=1 down=True
+1794193328.002045,link_down_ignored_static,s4:1 via port_status
+1794193328.030683,port_status,s1 port=2 down=False
+1794193328.032459,port_status,s1 port=2 down=True
+1794193328.032604,link_down_ignored_static,s1:2 via port_status
+1794193328.085671,port_status,s1 port=3 down=True
+1794193328.085869,link_down_ignored_static,s1:3 via port_status
+1794193328.086230,link_down_ignored_static,s1:3 via lldp_event
+1794193328.086282,link_down_ignored_static,s2:1 via lldp_event
+1794193328.086315,port_status,s2 port=1 down=True
+1794193328.086338,link_down_ignored_static,s2:1 via port_status
+1794193328.170697,port_status,s1 port=4 down=True
+1794193328.170842,link_down_ignored_static,s1:4 via port_status
+1794193328.171023,link_down_ignored_static,s1:4 via lldp_event
+1794193328.171062,link_down_ignored_static,s3:1 via lldp_event
+1794193328.174727,port_status,s4 port=2 down=True
+1794193328.174842,link_down_ignored_static,s4:2 via port_status
+1794193328.175300,link_down_ignored_static,s4:2 via lldp_event
+1794193328.175392,link_down_ignored_static,s2:2 via lldp_event
+1794193328.175432,port_status,s5 port=1 down=True
+1794193328.175455,link_down_ignored_static,s5:1 via port_status
+1794193328.175480,port_status,s3 port=1 down=True
+1794193328.175500,link_down_ignored_static,s3:1 via port_status
+1794193328.175523,port_status,s3 port=2 down=True
+1794193328.175542,link_down_ignored_static,s3:2 via port_status
+1794193328.175564,port_status,s2 port=2 down=True
+1794193328.175583,link_down_ignored_static,s2:2 via port_status
+1794193328.175876,link_down_ignored_static,s5:1 via lldp_event
+1794193328.175926,link_down_ignored_static,s3:2 via lldp_event
+1794193328.274329,port_status,s4 port=3 down=True
+1794193328.274475,link_down_ignored_static,s4:3 via port_status
+1794193328.274762,link_down_ignored_static,s4:3 via lldp_event
+1794193328.274808,link_down_ignored_static,s5:2 via lldp_event
+1794193328.274838,port_status,s5 port=2 down=True
+1794193328.274861,link_down_ignored_static,s5:2 via port_status
+1794193328.286644,switch_down,s1
+1794193328.299526,switch_down,s4
+1794193328.306715,switch_down,s3
+1794193328.311073,switch_down,s5
+1794193328.329309,switch_down,s2

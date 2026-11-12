@@ -1,0 +1,18 @@
+{
+  "client_id": 1,
+  "sent": 1800,
+  "acked": 1800,
+  "lost": 0,
+  "loss_pct": 0.0,
+  "retransmissions": 257,
+  "probes_sent": 166,
+  "recoveries": [
+    {
+      "start": 1794192709.6580148,
+      "end": 1794192727.2958648,
+      "duration_s": 17.637850046157837
+    }
+  ],
+  "avg_rtt_ms": 65.98912556966145,
+  "max_e2e_ms": 18083.080053329468
+}

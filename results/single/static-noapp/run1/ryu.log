@@ -1,0 +1,93 @@
+loading app /home/niranjan/adaptive-udp-sdn/controller/adaptive_router.py
+loading app ryu.controller.ofp_handler
+loading app ryu.topology.switches
+loading app ryu.controller.ofp_handler
+instantiating app /home/niranjan/adaptive-udp-sdn/controller/adaptive_router.py of AdaptiveRouter
+controller_start mode=static
+instantiating app ryu.controller.ofp_handler of OFPHandler
+instantiating app ryu.topology.switches of Switches
+switch_up s4
+routes_updated reason=switch_up flows=0 took_ms=0.00 paths=[]
+switch_up s1
+routes_updated reason=switch_up flows=0 took_ms=0.00 paths=[]
+switch_up s3
+routes_updated reason=switch_up flows=0 took_ms=0.00 paths=[]
+switch_up s2
+routes_updated reason=switch_up flows=0 took_ms=0.00 paths=[]
+switch_up s5
+routes_updated reason=switch_up flows=0 took_ms=0.00 paths=[]
+link_up s3:2 -> s5:1
+link_up s3:1 -> s1:4
+link_up s2:1 -> s1:3
+link_up s5:1 -> s3:2
+link_up s5:2 -> s4:3
+link_up s2:2 -> s4:2
+link_up s4:2 -> s2:2
+link_up s1:4 -> s3:1
+link_up s4:3 -> s5:2
+link_up s1:3 -> s2:1
+host_learned 10.0.0.1 00:00:00:00:00:01 at s1:1
+routes_updated reason=host_learned flows=5 took_ms=0.56 paths=[]
+host_learned 10.0.0.2 00:00:00:00:00:02 at s4:1
+routes_updated reason=host_learned flows=10 took_ms=0.77 paths=[10.0.0.1->10.0.0.2:s1>s2>s4]
+host_learned 10.0.0.3 00:00:00:00:00:03 at s1:2
+routes_updated reason=host_learned flows=15 took_ms=1.91 paths=[10.0.0.1->10.0.0.2:s1>s2>s4 10.0.0.1->10.0.0.3:s1 10.0.0.2->10.0.0.3:s4>s2>s1]
+port_status s4 port=2 down=False
+port_status s4 port=2 down=True
+link_down_ignored_static s4:2 via port_status
+link_down_ignored_static s4:2 via lldp_event
+link_down_ignored_static s2:2 via lldp_event
+port_status s2 port=2 down=False
+port_status s2 port=2 down=True
+link_down_ignored_static s2:2 via port_status
+port_status s4 port=2 down=True
+link_down_ignored_static s4:2 via port_status
+port_status s2 port=2 down=True
+link_down_ignored_static s2:2 via port_status
+port_status s2 port=2 down=False
+port_status s4 port=2 down=False
+link_up s4:2 -> s2:2
+link_up s2:2 -> s4:2
+port_status s1 port=1 down=False
+port_status s1 port=1 down=True
+link_down_ignored_static s1:1 via port_status
+port_status s4 port=1 down=True
+link_down_ignored_static s4:1 via port_status
+port_status s1 port=2 down=False
+port_status s1 port=2 down=True
+link_down_ignored_static s1:2 via port_status
+port_status s1 port=3 down=True
+link_down_ignored_static s1:3 via port_status
+link_down_ignored_static s1:3 via lldp_event
+link_down_ignored_static s2:1 via lldp_event
+port_status s2 port=1 down=True
+link_down_ignored_static s2:1 via port_status
+port_status s1 port=4 down=True
+link_down_ignored_static s1:4 via port_status
+port_status s3 port=1 down=True
+link_down_ignored_static s3:1 via port_status
+link_down_ignored_static s1:4 via lldp_event
+link_down_ignored_static s3:1 via lldp_event
+port_status s2 port=2 down=True
+link_down_ignored_static s2:2 via port_status
+port_status s3 port=2 down=True
+link_down_ignored_static s3:2 via port_status
+port_status s4 port=2 down=True
+link_down_ignored_static s4:2 via port_status
+port_status s5 port=1 down=True
+link_down_ignored_static s5:1 via port_status
+link_down_ignored_static s2:2 via lldp_event
+link_down_ignored_static s4:2 via lldp_event
+link_down_ignored_static s3:2 via lldp_event
+link_down_ignored_static s5:1 via lldp_event
+port_status s4 port=3 down=True
+link_down_ignored_static s4:3 via port_status
+link_down_ignored_static s4:3 via lldp_event
+link_down_ignored_static s5:2 via lldp_event
+port_status s5 port=2 down=True
+link_down_ignored_static s5:2 via port_status
+switch_down s4
+switch_down s1
+switch_down s3
+switch_down s5
+switch_down s2

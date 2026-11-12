@@ -1,0 +1,12 @@
+{
+  "client_id": 1,
+  "sent": 1800,
+  "acked": 897,
+  "lost": 903,
+  "loss_pct": 50.166666666666664,
+  "retransmissions": 0,
+  "probes_sent": 0,
+  "recoveries": [],
+  "avg_rtt_ms": 23.33665691490556,
+  "max_e2e_ms": 114.28236961364746
+}

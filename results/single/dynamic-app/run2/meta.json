@@ -1,0 +1,22 @@
+{
+  "mode": "dynamic",
+  "recovery": "on",
+  "rate": 50,
+  "duration": 30.0,
+  "clients": 2,
+  "t_start": 1794192318.6528924,
+  "events": [
+    {
+      "t_rel": 8.0,
+      "ts": 1794192326.6534734,
+      "action": "down",
+      "link": "s2-s4"
+    },
+    {
+      "t_rel": 20.0,
+      "ts": 1794192338.6541333,
+      "action": "up",
+      "link": "s2-s4"
+    }
+  ]
+}

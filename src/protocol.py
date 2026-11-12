@@ -1,64 +1,41 @@
+"""Application-level protocol for the Adaptive UDP service.
 
+Every datagram starts with a fixed 16-byte header (network byte order):
+
+    0       1       2       4               8                16
+    +-------+-------+-------+---------------+----------------+
+    | type  |  cid  |attempt|      seq      |   send_ts      |  (+ padding)
+    +-------+-------+-------+---------------+----------------+
+      u8      u8      u16     u32             f64 (epoch secs)
+
+type     : MSG_DATA / MSG_ACK / MSG_PROBE / MSG_PROBE_ACK
+cid      : client id (lets one server serve many clients)
+attempt  : transmission attempt number of this seq (1 = first try)
+seq      : per-client sequence number (DATA/ACK); 0 for probes
+send_ts  : sender timestamp; the server echoes it back unchanged so the
+           client can compute the RTT of the *specific attempt* that was ACKed
+"""
 import struct
 
-# Message header:
-# type         : 1 byte
-# client_id    : 1 byte
-# attempt      : 2 bytes
-# sequence     : 4 bytes
-# timestamp_ns : 8 bytes
-HEADER_FORMAT = "!BBHIQ"
-HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+MSG_DATA = 1
+MSG_ACK = 2
+MSG_PROBE = 3
+MSG_PROBE_ACK = 4
+_VALID = (MSG_DATA, MSG_ACK, MSG_PROBE, MSG_PROBE_ACK)
 
-DATA = 1
-ACK = 2
-PROBE = 3
-PROBE_ACK = 4
-
-MESSAGE_NAMES = {
-    DATA: "DATA",
-    ACK: "ACK",
-    PROBE: "PROBE",
-    PROBE_ACK: "PROBE_ACK",
-}
+_HDR = struct.Struct('!BBHId')
+HEADER_LEN = _HDR.size  # 16
 
 
-def encode_message(msg_type, client_id, attempt, seq, timestamp_ns):
-    """Encode a protocol message into a 16-byte header."""
-    if msg_type not in MESSAGE_NAMES:
-        raise ValueError(f"Unknown message type: {msg_type}")
-
-    return struct.pack(
-        HEADER_FORMAT,
-        msg_type,
-        client_id,
-        attempt,
-        seq,
-        timestamp_ns,
-    )
+def pack(msg_type, client_id, attempt, seq, ts, payload_len=0):
+    return _HDR.pack(msg_type, client_id, attempt, seq, ts) + b'x' * payload_len
 
 
-def decode_message(data):
-    """Decode a protocol header. Return None for malformed packets."""
-    if len(data) < HEADER_SIZE:
-        return None
-
-    try:
-        msg_type, client_id, attempt, seq, timestamp_ns = (
-            struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
-        )
-    except struct.error:
-        return None
-
-    if msg_type not in MESSAGE_NAMES:
-        return None
-
-    return {
-        "type": msg_type,
-        "type_name": MESSAGE_NAMES[msg_type],
-        "client_id": client_id,
-        "attempt": attempt,
-        "seq": seq,
-        "timestamp_ns": timestamp_ns,
-        "payload": data[HEADER_SIZE:],
-    }
+def unpack(data):
+    """Return (type, client_id, attempt, seq, ts) or raise ValueError."""
+    if len(data) < HEADER_LEN:
+        raise ValueError('short datagram')
+    t, cid, attempt, seq, ts = _HDR.unpack(data[:HEADER_LEN])
+    if t not in _VALID:
+        raise ValueError('bad message type %d' % t)
+    return t, cid, attempt, seq, ts

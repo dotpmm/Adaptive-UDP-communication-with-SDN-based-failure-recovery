@@ -1,180 +1,111 @@
+#!/usr/bin/env python3
+"""UDP server: receives DATA / PROBE datagrams, answers with ACK / PROBE_ACK.
 
+Concurrency model: one receiver thread (blocking recvfrom) feeds a queue that
+is drained by N worker threads. Duplicate DATA (retransmissions) are detected
+per (client_id, seq) and re-ACKed but flagged in the log.
+Every received datagram is logged with its arrival time -> used to measure
+service interruption on the server side.
+"""
 import argparse
 import csv
 import json
-import os
 import queue
 import signal
 import socket
 import threading
 import time
 
-from protocol import (
-    ACK,
-    DATA,
-    PROBE,
-    PROBE_ACK,
-    HEADER_SIZE,
-    encode_message,
-    decode_message,
-)
-
-STOP = threading.Event()
-PACKETS = queue.Queue()
-SEEN = set()
-SEEN_LOCK = threading.Lock()
-LOG_LOCK = threading.Lock()
-LOG_ROWS = []
-
-
-def handle_packet(sock, packet, address):
-    message = decode_message(packet)
-    if message is None:
-        return
-
-    msg_type = message["type"]
-    client_id = message["client_id"]
-    seq = message["seq"]
-    timestamp_ns = message["timestamp_ns"]
-
-    if msg_type == DATA:
-        key = (client_id, seq)
-
-        with SEEN_LOCK:
-            duplicate = key in SEEN
-            SEEN.add(key)
-
-        # ACK every valid DATA packet, including retransmissions.
-        ack = encode_message(
-            ACK,
-            client_id,
-            message["attempt"],
-            seq,
-            timestamp_ns,
-        )
-        sock.sendto(ack, address)
-
-        with LOG_LOCK:
-            LOG_ROWS.append({
-                "arrival_time": time.time(),
-                "client_id": client_id,
-                "seq": seq,
-                "attempt": message["attempt"],
-                "duplicate": int(duplicate),
-                "source_ip": address[0],
-                "source_port": address[1],
-            })
-
-        print(
-            f"DATA client={client_id} seq={seq} "
-            f"attempt={message['attempt']} "
-            f"{'(duplicate)' if duplicate else ''}"
-        )
-
-    elif msg_type == PROBE:
-        response = encode_message(
-            PROBE_ACK,
-            client_id,
-            message["attempt"],
-            0,
-            timestamp_ns,
-        )
-        sock.sendto(response, address)
-
-
-def worker(sock):
-    while not STOP.is_set():
-        try:
-            item = PACKETS.get(timeout=0.2)
-        except queue.Empty:
-            continue
-
-        if item is None:
-            PACKETS.task_done()
-            break
-
-        packet, address = item
-        try:
-            handle_packet(sock, packet, address)
-        except OSError as exc:
-            if not STOP.is_set():
-                print(f"Socket error: {exc}")
-        except Exception as exc:
-            print(f"Packet processing error: {exc}")
-        finally:
-            PACKETS.task_done()
-
-
-def save_logs(path):
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-
-    with LOG_LOCK:
-        rows = list(LOG_ROWS)
-
-    with open(path, "w", newline="", encoding="utf-8") as file:
-        columns = [
-            "arrival_time", "client_id", "seq",
-            "attempt", "duplicate", "source_ip", "source_port",
-        ]
-        writer = csv.DictWriter(file, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    print(f"Saved {len(rows)} received DATA records to {path}")
-
-
-def stop_server(signum, frame):
-    STOP.set()
+from protocol import (MSG_ACK, MSG_DATA, MSG_PROBE, MSG_PROBE_ACK, pack, unpack)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="UDP reliability server")
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--log", default="server.csv")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--bind', default='0.0.0.0')
+    ap.add_argument('--port', type=int, default=5000)
+    ap.add_argument('--workers', type=int, default=2)
+    ap.add_argument('--log', default='server_log.csv')
+    ap.add_argument('--live', action='store_true', help='JSON stats lines on stdout')
+    a = ap.parse_args()
 
-    signal.signal(signal.SIGINT, stop_server)
-    signal.signal(signal.SIGTERM, stop_server)
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((args.host, args.port))
-    sock.settimeout(0.2)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((a.bind, a.port))
+    sock.settimeout(0.5)
 
-    threads = [
-        threading.Thread(target=worker, args=(sock,), daemon=True)
-        for _ in range(max(1, args.workers))
-    ]
-    for thread in threads:
-        thread.start()
+    q = queue.Queue()
+    seen, seen_lock, rows = {}, threading.Lock(), []
+    cnt = {'data': 0, 'dup': 0, 'probe': 0}
+    per = {}
 
-    print(f"UDP server listening on {args.host}:{args.port}")
-
-    try:
-        while not STOP.is_set():
+    def worker():
+        while not (stop.is_set() and q.empty()):
             try:
-                packet, address = sock.recvfrom(65535)
-            except socket.timeout:
+                data, addr, ts = q.get(timeout=0.2)
+            except queue.Empty:
                 continue
-
-            if len(packet) < HEADER_SIZE:
+            try:
+                t, cid, att, seq, sts = unpack(data)
+            except ValueError:
+                continue  # malformed datagram: ignore
+            dup = 0
+            if t == MSG_DATA:
+                with seen_lock:
+                    s = seen.setdefault(cid, set())
+                    dup = int(seq in s)
+                    s.add(seq)
+                reply = pack(MSG_ACK, cid, att, seq, sts)
+            elif t == MSG_PROBE:
+                reply = pack(MSG_PROBE_ACK, cid, att, seq, sts)
+            else:
                 continue
+            try:
+                sock.sendto(reply, addr)
+            except OSError:
+                pass
+            rows.append(('%.6f' % ts, cid, seq, att, t, dup))
+            if t == MSG_DATA:
+                cnt['data'] += 1
+                cnt['dup'] += dup
+                per[cid] = per.get(cid, 0) + 1
+            else:
+                cnt['probe'] += 1
 
-            PACKETS.put((packet, address))
+    workers = [threading.Thread(target=worker, daemon=True) for _ in range(a.workers)]
+    for w in workers:
+        w.start()
+    print('[server] listening on %s:%d' % (a.bind, a.port), flush=True)
 
-    except OSError:
-        if not STOP.is_set():
-            raise
-    finally:
-        STOP.set()
-        for _ in threads:
-            PACKETS.put(None)
-        for thread in threads:
-            thread.join(timeout=1.0)
-        sock.close()
-        save_logs(args.log)
+    def live():
+        while not stop.is_set():
+            time.sleep(0.5)
+            print(json.dumps({'k': 'srv', 't': time.time(), 'data': cnt['data'],
+                              'dup': cnt['dup'], 'probe': cnt['probe'],
+                              'per': dict(per)}), flush=True)
+    if a.live:
+        threading.Thread(target=live, daemon=True).start()
+
+    while not stop.is_set():
+        try:
+            data, addr = sock.recvfrom(2048)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        q.put((data, addr, time.time()))
+
+    for w in workers:
+        w.join(timeout=2)
+    with open(a.log, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['recv_ts', 'client_id', 'seq', 'attempt', 'msg_type', 'dup'])
+        w.writerows(sorted(rows))
+    print('[server] stopped, %d datagrams logged' % len(rows), flush=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
