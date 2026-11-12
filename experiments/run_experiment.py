@@ -36,12 +36,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 CONTROLLER_APP = PROJECT_ROOT / "controller" / "adaptive_router.py"
 
-CONTROLLER_HOST = "127.0.0.1"
-CONTROLLER_PORT = 6653
+# The topology lives in topology/topo.py so the experiments and the
+# interactive demo always use the same network.
+sys.path.insert(0, str(PROJECT_ROOT / "topology"))
+from topo import (  # noqa: E402
+    CONTROLLER_HOST,
+    CONTROLLER_PORT,
+    PRIMARY_LINK,
+    build_network,
+)
+
 SERVER_IP = "10.0.0.2"
 SERVER_PORT = 5000
-
-PRIMARY_LINK = ("s2", "s4")
 
 
 def real_user_home():
@@ -86,54 +92,6 @@ def wait_for_port(host, port, timeout):
         except OSError:
             time.sleep(0.3)
     return False
-
-
-def build_network():
-    """Create the Mininet network (imported lazily so --help works anywhere)."""
-    from mininet.link import TCLink
-    from mininet.net import Mininet
-    from mininet.node import OVSSwitch, RemoteController
-
-    net = Mininet(
-        controller=None,
-        switch=OVSSwitch,
-        link=TCLink,
-        autoSetMacs=True,
-        build=False,
-    )
-
-    net.addController(
-        "c0",
-        controller=RemoteController,
-        ip=CONTROLLER_HOST,
-        port=CONTROLLER_PORT,
-    )
-
-    h1 = net.addHost("h1", ip="10.0.0.1/24")
-    h2 = net.addHost("h2", ip="10.0.0.2/24")
-    h3 = net.addHost("h3", ip="10.0.0.3/24")
-
-    switches = {
-        name: net.addSwitch(name, protocols="OpenFlow13")
-        for name in ("s1", "s2", "s3", "s4", "s5")
-    }
-    s1, s2, s3, s4, s5 = (switches[n] for n in ("s1", "s2", "s3", "s4", "s5"))
-
-    # Hosts
-    net.addLink(h1, s1, bw=100, delay="1ms")
-    net.addLink(h3, s1, bw=100, delay="1ms")
-    net.addLink(h2, s4, bw=100, delay="1ms")
-
-    # Primary path: h1 - s1 - s2 - s4 - h2
-    net.addLink(s1, s2, bw=50, delay="5ms")
-    net.addLink(s2, s4, bw=50, delay="5ms")
-
-    # Backup path: h1 - s1 - s3 - s5 - s4 - h2
-    net.addLink(s1, s3, bw=50, delay="5ms")
-    net.addLink(s3, s5, bw=50, delay="5ms")
-    net.addLink(s5, s4, bw=50, delay="5ms")
-
-    return net
 
 
 def stop_process(process, timeout=5):

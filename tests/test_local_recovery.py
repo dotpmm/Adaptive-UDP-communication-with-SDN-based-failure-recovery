@@ -13,7 +13,9 @@ This test does not require Mininet or Ryu.
 """
 
 import csv
+import json
 import os
+import select
 import socket
 import subprocess
 import sys
@@ -35,25 +37,28 @@ SEND_RATE = 50.0
 
 
 class UDPBlackoutProxy:
-    """Drops UDP packets during a blackout and forwards them otherwise."""
+    """Drops UDP packets during a blackout and forwards them otherwise.
+
+    The blackout starts when the first client packet arrives, so it is
+    not affected by how long the client takes to start. Both directions
+    are served with select(), so packets are handled as they arrive and
+    are never queued up during the blackout and forwarded afterwards.
+    """
 
     def __init__(self, listen_port, server_address, blackout_seconds):
         self.server_address = server_address
         self.blackout_seconds = blackout_seconds
-        self.start_time = None
+        self.blackout_start = None
         self.stop_event = threading.Event()
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("127.0.0.1", listen_port))
-        self.socket.settimeout(0.1)
 
         self.port = self.socket.getsockname()[1]
         self.client_address = None
-        self.lock = threading.Lock()
 
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind(("127.0.0.1", 0))
-        self.server_socket.settimeout(0.1)
 
         self.dropped_packets = 0
         self.forwarded_packets = 0
@@ -61,51 +66,54 @@ class UDPBlackoutProxy:
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def start(self):
-        self.start_time = time.monotonic()
         self.thread.start()
 
     def is_blackout(self):
+        if self.blackout_start is None:
+            return False
         return (
-            time.monotonic() - self.start_time
+            time.monotonic() - self.blackout_start
             < self.blackout_seconds
         )
 
     def run(self):
         while not self.stop_event.is_set():
-            # Receive client packets.
             try:
-                data, address = self.socket.recvfrom(65535)
-                self.client_address = address
+                ready, _, _ = select.select(
+                    [self.socket, self.server_socket], [], [], 0.1
+                )
+            except (OSError, ValueError):
+                break
 
-                if self.is_blackout():
-                    self.dropped_packets += 1
+            for sock in ready:
+                try:
+                    data, address = sock.recvfrom(65535)
+                except OSError:
+                    return
+
+                if sock is self.socket:
+                    # Client -> server
+                    if self.blackout_start is None:
+                        self.blackout_start = time.monotonic()
+                    self.client_address = address
+                    if self.is_blackout():
+                        self.dropped_packets += 1
+                    else:
+                        self.server_socket.sendto(data, self.server_address)
+                        self.forwarded_packets += 1
                 else:
-                    self.server_socket.sendto(data, self.server_address)
-                    self.forwarded_packets += 1
-            except socket.timeout:
-                pass
-            except OSError:
-                break
-
-            # Receive server replies.
-            try:
-                data, address = self.server_socket.recvfrom(65535)
-
-                if self.is_blackout():
-                    self.dropped_packets += 1
-                elif self.client_address is not None:
-                    self.socket.sendto(data, self.client_address)
-                    self.forwarded_packets += 1
-            except socket.timeout:
-                pass
-            except OSError:
-                break
+                    # Server -> client
+                    if self.is_blackout():
+                        self.dropped_packets += 1
+                    elif self.client_address is not None:
+                        self.socket.sendto(data, self.client_address)
+                        self.forwarded_packets += 1
 
     def close(self):
         self.stop_event.set()
+        self.thread.join(timeout=1.0)
         self.socket.close()
         self.server_socket.close()
-        self.thread.join(timeout=1.0)
 
 
 def start_server(log_path):
@@ -206,12 +214,21 @@ def run_test(recovery_enabled):
                 server.wait()
 
             received = 0
+            unique = set()
             if server_log.exists():
                 with open(server_log, newline="", encoding="utf-8") as file:
-                    received = sum(1 for _ in csv.DictReader(file))
+                    for row in csv.DictReader(file):
+                        received += 1
+                        unique.add((row["client_id"], row["seq"]))
+
+            with open(summary_path, encoding="utf-8") as file:
+                sent = json.load(file)["sent"]
 
             print(f"\nTest mode: {mode}")
+            print(f"Client sent: {sent}")
             print(f"Server DATA arrivals (including retransmissions): {received}")
+            print(f"Unique messages delivered: {len(unique)}")
+            print(f"Messages lost: {sent - len(unique)}")
             print(f"Proxy forwarded packets: {proxy.forwarded_packets}")
             print(f"Proxy dropped packets: {proxy.dropped_packets}")
             print("Client output:")
@@ -220,6 +237,9 @@ def run_test(recovery_enabled):
             return {
                 "mode": mode,
                 "server_arrivals": received,
+                "sent": sent,
+                "unique_delivered": len(unique),
+                "lost": sent - len(unique),
                 "proxy_forwarded": proxy.forwarded_packets,
                 "proxy_dropped": proxy.dropped_packets,
             }
@@ -251,14 +271,16 @@ def main():
     recovery_on = run_test(True)
     recovery_off = run_test(False)
 
-    print("\nComparison")
-    print("Recovery ON server arrivals:", recovery_on["server_arrivals"])
-    print("Recovery OFF server arrivals:", recovery_off["server_arrivals"])
-    print(
-        "\nNote: server arrivals count retransmitted duplicates as arrivals. "
-        "Use unique (client_id, seq) values to calculate unique delivered "
-        "messages."
-    )
+    print("\nComparison (unique messages never delivered)")
+    print("Recovery ON  lost:", recovery_on["lost"])
+    print("Recovery OFF lost:", recovery_off["lost"])
+
+    # Recovery must deliver everything; fire-and-forget must lose the
+    # messages sent during the blackout.
+    if recovery_on["lost"] != 0 or recovery_off["lost"] == 0:
+        print("\nFAIL: unexpected loss pattern")
+        sys.exit(1)
+    print("\nPASS")
 
 
 if __name__ == "__main__":
