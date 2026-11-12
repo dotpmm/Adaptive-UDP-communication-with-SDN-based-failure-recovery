@@ -53,7 +53,9 @@ def main():
     # seq -> {timestamp, attempt, last_sent, retries}
     outstanding = OrderedDict()
     pending = OrderedDict()
-    lock = threading.Lock()
+    # Re-entrant: send_data() takes the lock and is also called from code
+    # that already holds it (retransmit loop, resume-after-outage).
+    lock = threading.RLock()
 
     rows = []
     stats = {
@@ -213,10 +215,14 @@ def main():
                     "retries": 0,
                 }
 
+                # "sent" counts every message the application generated,
+                # including ones buffered during an outage and delivered
+                # later, so acknowledged can never exceed sent.
+                stats["sent"] += 1
+
                 if recovery_enabled and recovering:
                     pending[seq] = record
                 else:
-                    stats["sent"] += 1
                     if recovery_enabled:
                         outstanding[seq] = record
 
@@ -279,7 +285,6 @@ def main():
 
         # Count messages that remain outstanding or buffered at shutdown.
         stats["lost"] += len(outstanding) + len(pending)
-        stats["sent"] += len(pending)
 
         os.makedirs(
             os.path.dirname(os.path.abspath(args.log)),

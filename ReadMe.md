@@ -65,10 +65,9 @@ When the primary link between `s2` and `s4` fails, the controller updates the fo
 ## 4. Repository Structure
 
 ```text
-adaptive-udp-sdn/
-├── README.md
-├── requirements.txt
-├── .gitignore
+Adaptive-UDP-communication-with-SDN-based-failure-recovery/
+├── ReadMe.md
+├── LICENSE
 ├── src/
 │   ├── protocol.py
 │   ├── server.py
@@ -84,13 +83,13 @@ adaptive-udp-sdn/
 │   └── run_all.sh
 ├── analysis/
 │   └── analyze.py
-├── docs/
 ├── screenshots/
 └── report/
+    ├── D1_Report.docx
     └── D1_Report.pdf
 ```
 
-*Note: Include files and folders that exist in your repository. The experiments and analysis scripts support the planned Deliverable 2 evaluation.*
+The experiments and analysis scripts support the planned Deliverable 2 evaluation. Experiment runs are written to `results/`, which is created on first run.
 
 ## 5. Technologies Used
 
@@ -153,21 +152,18 @@ Ensure that Python 3.9 is available before creating the environment.
 Clone the repository:
 
 ```bash
-git clone https://github.com/<your-username>/adaptive-udp-sdn.git
-cd adaptive-udp-sdn
+git clone https://github.com/dotpmm/Adaptive-UDP-communication-with-SDN-based-failure-recovery.git
+cd Adaptive-UDP-communication-with-SDN-based-failure-recovery
 ```
-
-Replace `<your-username>` with your GitHub username.
 
 ### Terminal 1: Start the Ryu controller
 
 ```bash
-ROUTING_MODE=dynamic RESULTS_DIR=results/demo \
-  ~/ryu-env/bin/ryu-manager --observe-links \
-  controller/adaptive_router.py
+mkdir -p results/demo && cd results/demo
+~/ryu-env/bin/ryu-manager --observe-links ../../controller/adaptive_router.py
 ```
 
-The controller discovers links, maintains the network graph, and installs forwarding rules.
+The controller discovers links, maintains the network graph, and installs forwarding rules. It writes `controller_events.csv` and `port_stats.csv` into the directory it is started from, so start it in a results folder as shown, then run the remaining commands from the project root.
 
 ### Terminal 2: Start the Mininet topology
 
@@ -286,40 +282,38 @@ These are observations from the reported test runs, not guarantees of performanc
 
 The `screenshots/` directory contains evidence from the D1 test runs:
 
-* Network topology
 * Local UDP recovery test
 * Mininet connectivity
 * Primary-path forwarding rules
-* Controller link-failure detection
+* Controller link-failure detection and rerouting
 * Backup-path forwarding rules
-* OpenFlow port-down status
 * UDP client summary
 
 ### Screenshot Gallery
 
 #### Mininet connectivity (`pingall`)
 
-![Mininet pingall connectivity](screenshots/mininet_pingall_connectivity.png.png)
+![Mininet pingall connectivity](screenshots/mininet_pingall_connectivity.png)
 
 #### Local UDP recovery test
 
-![Local UDP recovery test](screenshots/udp_local_recovery_test.png.png)
+![Local UDP recovery test](screenshots/udp_local_recovery_test.png)
 
 #### Primary-path forwarding rules
 
-![Primary path flow rules](screenshots/primary_path_flow_rules.png.png)
+![Primary path flow rules](screenshots/primary_path_flow_rules.png)
 
 #### Controller link-failure detection and rerouting
 
-![SDN link failure rerouting](screenshots/sdn_link_failure_rerouting.png.png)
+![SDN link failure rerouting](screenshots/sdn_link_failure_rerouting.png)
 
 #### Backup-path forwarding rules
 
-![Backup path flow rules](screenshots/backup_path_flow_rules.png.png)
+![Backup path flow rules](screenshots/backup_path_flow_rules.png)
 
 #### UDP client recovery summary
 
-![UDP client recovery summary](screenshots/udp_client_recovery_summary.png.png)
+![UDP client recovery summary](screenshots/udp_client_recovery_summary.png)
 
 The D1 report is available at:
 
@@ -342,6 +336,18 @@ Planned experiments include:
 
 The analysis scripts will generate tables and plots from experiment results.
 
+To run the four baseline combinations (recovery on/off, with and without a link failure), run from the project root with Ryu and Mininet installed:
+
+```bash
+sudo -E ./experiments/run_all.sh
+```
+
+Each run writes `client.csv`, `server.csv`, `client_summary.json`, `controller_events.csv` and `events.json` to its own folder under `results/`. Timing can be changed with `DURATION`, `FAILURE_AFTER`, `FAILURE_DURATION` and `RATE` environment variables. Then summarize the runs:
+
+```bash
+python3 analysis/analyze.py --input results --output analysis/output
+```
+
 ## 13. Limitations
 
 * UDP itself does not guarantee delivery.
@@ -359,7 +365,7 @@ The implementation provides a foundation for further evaluation of failure detec
 ---
 
 **GitHub Repository:**
-`https://github.com/Niranjan728/adaptive-udp-sdn`
+`https://github.com/dotpmm/Adaptive-UDP-communication-with-SDN-based-failure-recovery`
 
 **Course:** Computer Networks (UE25CS243A)
 **Project:** Jackfruit Mini Project — Problem 30
