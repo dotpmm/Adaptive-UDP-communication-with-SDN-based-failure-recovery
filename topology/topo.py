@@ -69,19 +69,23 @@ def build_network(controller_ip=CONTROLLER_HOST,
         switches[name] for name in ("s1", "s2", "s3", "s4", "s5")
     )
 
-    # Host links
-    net.addLink(h1, s1, bw=100, delay="1ms")
-    net.addLink(h3, s1, bw=100, delay="1ms")
-    net.addLink(h2, s4, bw=100, delay="1ms")
+    # Links are added in this order on purpose: it gives the port numbers
+    # seen in the D1 screenshots (s1-eth1 = h1, s1-eth2 = h3,
+    # s1-eth3 = towards s2, s1-eth4 = towards s3). All links are 10 Mbit/s.
+    net.addLink(h1, s1, bw=10, delay="1ms")
+    net.addLink(h2, s4, bw=10, delay="1ms")
+    net.addLink(h3, s1, bw=10, delay="1ms")
 
-    # Primary path: s1 - s2 - s4
-    net.addLink(s1, s2, bw=50, delay="5ms")
-    net.addLink(s2, s4, bw=50, delay="5ms")
+    # Primary path: s1 - s2 - s4 (RTT about 12 ms end to end)
+    net.addLink(s1, s2, bw=10, delay="2ms")
+    net.addLink(s1, s3, bw=10, delay="2ms")
+    net.addLink(s2, s4, bw=10, delay="2ms")
 
-    # Backup path: s1 - s3 - s5 - s4
-    net.addLink(s1, s3, bw=50, delay="5ms")
-    net.addLink(s3, s5, bw=50, delay="5ms")
-    net.addLink(s5, s4, bw=50, delay="5ms")
+    # Backup path: s1 - s3 - s5 - s4. The s3-s5 link is deliberately slow
+    # (10 ms) so the latency change after a failover is visible
+    # (RTT about 32 ms end to end).
+    net.addLink(s3, s5, bw=10, delay="10ms")
+    net.addLink(s5, s4, bw=10, delay="2ms")
 
     return net
 
