@@ -1,6 +1,12 @@
 # Adaptive Communication Network with Failure Recovery
 **SDN + UDP Socket Programming (Jackfruit Mini Project, UE25CS243A, Problem 30)**
+## Contributors
 
+| Team member | SRN | Contribution |
+|---|---|---|
+| VIJAY ADITYA MUNNANGI | PES1UG25CS317 | Web dashboard (`ui/`): live view of the network, active path and link status, with buttons to break and restore links. Also worked on integrating the UI with the running network. |
+| PRAJWAL M MALLAPPANAVAR |PES1UG25CS370| UDP socket application (`src/`: `protocol.py`, `server.py`, `client.py`) and the Mininet topology (`topology/topo.py`). |
+| NIRANJAN BASAPPA BENAKANAVAR| PES1UG25CS343 | Documentation (`README.md` and the project report), testing (`tests/`) and the remaining parts: Ryu controller (`controller/`), experiment automation (`experiments/`) and results analysis (`analysis/`). |
 A resilient UDP communication framework. An OpenFlow 1.3 (Ryu) controller monitors the
 topology, **detects link failures within milliseconds, and reroutes application traffic over an
 alternate path**, while the UDP application itself **detects the outage, probes the network and
